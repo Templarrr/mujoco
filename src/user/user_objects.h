@@ -964,6 +964,7 @@ class mjCGeom : public mjCGeom_, private mjsGeom {
   mjsGeom  spec;               // variables set by user
   double   GetVolume() const;  // compute geom volume
   void     SetInertia(void);   // compute and set geom inertia
+  void     GetCenterOfMass(double com[3]) const;  // center of mass in body frame
   void     SetParent(mjCBody* _body) { body = _body; }
   mjCBody* GetParent() const { return body; }
   mjtGeom  Type() const { return type; }

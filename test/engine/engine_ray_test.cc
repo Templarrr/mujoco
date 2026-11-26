@@ -1177,5 +1177,79 @@ TEST_F(RayTest, RayTreeRotatedAndBvActive) {
   EXPECT_TRUE(d->bvh_active[m->mesh_bvhadr[0]]);
 }
 
+TEST_F(RayTest, RayFrustum) {
+  // cone with apex at z = 0.5 and base of radius 0.5 at z = -0.5, and inverted
+  // frustum with radius 0.5 at z = 0.5 and 0.25 at z = -0.5, at x = 10
+  static constexpr char kXml[] = R"(
+  <mujoco>
+    <worldbody>
+      <geom name="cone" type="cylinder" size="0 0.5 0.5"/>
+      <geom name="frustum" type="cylinder" size="0.5 0.5 0.25" pos="10 0 0"/>
+    </worldbody>
+  </mujoco>
+  )";
+  char error[1024];
+  MjModelPtr m = LoadModelFromString(kXml, error, sizeof(error));
+  ASSERT_THAT(m.get(), NotNull()) << error;
+  MjDataPtr d = MakeData(m);
+  mj_forward(m.get(), d.get());
+  const mjtNum tol = MjTol(1e-12, 1e-5);
+  const mjtNum n = 1 / mju_sqrt(1.25);
+  int geomid;
+  mjtNum normal[3];
+
+  // round side of the cone, of radius 0.25 at z = 0
+  mjtNum pnt1[3] = {2, 0, 0}, vec1[3] = {-1, 0, 0};
+  mjtNum dist = mj_ray(m.get(), d.get(), pnt1, vec1, nullptr, 1, -1, &geomid,
+                       normal);
+  EXPECT_EQ(geomid, 0);
+  EXPECT_NEAR(dist, 1.75, tol);
+  EXPECT_THAT(normal, ElementsAre(MjNear(n, 1e-12, 1e-5), MjNear(0, 1e-12, 1e-5),
+                                  MjNear(0.5 * n, 1e-12, 1e-5)));
+
+  // round side from above, at radius 0.1 the height is 0.3
+  mjtNum pnt2[3] = {0.1, 0, 2}, vec2[3] = {0, 0, -1};
+  dist = mj_ray(m.get(), d.get(), pnt2, vec2, nullptr, 1, -1, &geomid, normal);
+  EXPECT_EQ(geomid, 0);
+  EXPECT_NEAR(dist, 1.7, tol);
+  EXPECT_THAT(normal, ElementsAre(MjNear(n, 1e-12, 1e-5), MjNear(0, 1e-12, 1e-5),
+                                  MjNear(0.5 * n, 1e-12, 1e-5)));
+
+  // apex, along the axis
+  mjtNum pnt3[3] = {0, 0, 2};
+  dist = mj_ray(m.get(), d.get(), pnt3, vec2, nullptr, 1, -1, &geomid, nullptr);
+  EXPECT_EQ(geomid, 0);
+  EXPECT_NEAR(dist, 1.5, tol);
+
+  // flat base
+  mjtNum pnt4[3] = {0.3, 0, -2}, vec4[3] = {0, 0, 1};
+  dist = mj_ray(m.get(), d.get(), pnt4, vec4, nullptr, 1, -1, &geomid, normal);
+  EXPECT_EQ(geomid, 0);
+  EXPECT_NEAR(dist, 1.5, tol);
+  EXPECT_THAT(normal, ElementsAre(0, 0, -1));
+
+  // above the apex: miss
+  mjtNum pnt5[3] = {2, 0, 0.6};
+  dist = mj_ray(m.get(), d.get(), pnt5, vec1, nullptr, 1, -1, &geomid, normal);
+  EXPECT_EQ(geomid, -1);
+  EXPECT_EQ(dist, -1);
+
+  // inverted frustum: radius 0.375 at z = 0, normal tilted down
+  mjtNum pnt6[3] = {12, 0, 0};
+  dist = mj_ray(m.get(), d.get(), pnt6, vec1, nullptr, 1, -1, &geomid, normal);
+  EXPECT_EQ(geomid, 1);
+  EXPECT_NEAR(dist, 1.625, tol);
+  const mjtNum n6 = 1 / mju_sqrt(1 + 0.25 * 0.25);
+  EXPECT_THAT(normal, ElementsAre(MjNear(n6, 1e-12, 1e-5), MjNear(0, 1e-12, 1e-5),
+                                  MjNear(-0.25 * n6, 1e-12, 1e-5)));
+
+  // inverted frustum: hit the top from above, at radius 0.45
+  mjtNum pnt7[3] = {10.45, 0, 2};
+  dist = mj_ray(m.get(), d.get(), pnt7, vec2, nullptr, 1, -1, &geomid, normal);
+  EXPECT_EQ(geomid, 1);
+  EXPECT_NEAR(dist, 1.5, tol);
+  EXPECT_THAT(normal, ElementsAre(0, 0, 1));
+}
+
 }  // namespace
 }  // namespace mujoco

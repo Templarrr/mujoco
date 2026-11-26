@@ -2831,6 +2831,31 @@ helps clarify the role of bodies and geoms in MuJoCo.
    cylinder. The cylinder is oriented along the Z axis of the geom's frame. It can alternatively be specified with the
    fromto attribute below.
 
+   .. image:: images/XMLreference/frustum.png
+      :width: 45%
+      :align: right
+      :target: https://github.com/google-deepmind/mujoco/blob/main/model/frustum/gallery.xml
+
+   .. _body-geom-frustum:
+
+   An optional third size parameter turns the cylinder into a **conical frustum**: it is the radius at the -Z end of
+   the geom, while the first size parameter is the radius at the +Z end. If one of the two radii is 0, the geom is a
+   **cone** with its apex at that end; since a third size parameter of 0 (the default) means that the radius is the same
+   at both ends, a cone has its apex at the +Z end, ``size="0 half-height radius"``. When the geom is specified with
+   :ref:`fromto<body-geom-fromto>`, the two radii are the two size parameters, at the first ("from") and second ("to")
+   point, ``size="radius-from radius-to"``, and either of them can be 0. Frustums and cones are treated as analytic
+   surfaces: collisions with planes and spheres are computed with dedicated routines, and all other pairs use the
+   general-purpose convex collider with exact support functions, including the multiple contacts of flat faces and
+   edges. Ray casting, signed distances and the mass, center of mass and inertia (solid or :ref:`shell
+   <body-geom-shellinertia>`) are exact. Note that, unlike other geoms, the center of mass of a frustum is not at the
+   geom origin, which is half-way along its axis, but closer to its larger end. Frustums and cones cannot be used as
+   :ref:`tendon wrapping<spatial-geom>` obstacles. Cylinder :ref:`sites<body-site>` are always cylinders.
+
+   .. image:: images/XMLreference/frustum_contacts.png
+      :width: 45%
+      :align: right
+      :target: https://github.com/google-deepmind/mujoco/blob/main/model/frustum/contacts.xml
+
    The **box** type defines a box. Three size parameters are required, corresponding to the half-sizes of the box along
    the X, Y and Z axes of the geom's frame. Note that box-box collisions can generate up to 8 contact points.
 
@@ -2923,6 +2948,9 @@ helps clarify the role of bodies and geoms in MuJoCo.
    +---------+--------+------------------------------------------------------------------------------------------------+
    |cylinder | 1 or 2 | Radius of the cylinder; half-length of the cylinder when not using the :at:`fromto`            |
    |         |        | specification.                                                                                 |
+   |         +--------+------------------------------------------------------------------------------------------------+
+   |         | 2 or 3 | :ref:`Conical frustum or cone<body-geom-frustum>`: radius at the +Z end; half-length; radius at|
+   |         |        | the -Z end. With :at:`fromto`: radius at the "from" point; radius at the "to" point.           |
    +---------+--------+------------------------------------------------------------------------------------------------+
    | box     | 3      | X half-size; Y half-size; Z half-size.                                                         |
    +---------+--------+------------------------------------------------------------------------------------------------+
@@ -5533,7 +5561,7 @@ constrained to pass through the geom instead of passing around it.
 
 :at:`geom`: :at-val:`string, required`
    The name of a geom that acts as an obstacle for the tendon path. Only sphere and cylinder geoms can be referenced
-   here.
+   here, and cylinders cannot be :ref:`conical frustums<body-geom-frustum>`.
 
 .. _spatial-geom-sidesite:
 

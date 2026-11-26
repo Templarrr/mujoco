@@ -260,6 +260,7 @@ class DocTest(googletest.TestCase):
             'mjGEOM_LABEL',
             'mjGEOM_TRIANGLE',
             'mjGEOM_DISC',
+            'mjGEOM_FRUSTUM',
             'mjGEOM_NONE',
         },
         'texrole': {  # not settable from XML

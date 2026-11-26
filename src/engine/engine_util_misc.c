@@ -456,8 +456,9 @@ void mju_geomSemiAxes(mjtNum semiaxes[3], const mjtNum size[3], mjtGeom type) {
     break;
 
   case mjGEOM_CYLINDER:
-    semiaxes[0] = size[0];
-    semiaxes[1] = size[0];
+    // conical frustum: use the mean radius
+    semiaxes[0] = 0.5*(size[0] + mju_cylinderBottom(size));
+    semiaxes[1] = semiaxes[0];
     semiaxes[2] = size[1];
     break;
 

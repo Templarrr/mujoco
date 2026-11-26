@@ -437,9 +437,123 @@ static mjtNum ray_ellipsoid(const mjtNum pos[3], const mjtNum mat[9], const mjtN
 }
 
 
+// conical frustum: cylinder with radius size[0] at +z and mju_cylinderBottom(size) at -z
+static mjtNum ray_frustum(const mjtNum pos[3], const mjtNum mat[9], const mjtNum size[3],
+                          const mjtNum pnt[3], const mjtNum vec[3], mjtNum normal[3]) {
+  mjtNum radius[2] = {mju_cylinderBottom(size), size[0]};  // radius at bottom, top
+  mjtNum rmax = mju_max(radius[0], radius[1]);
+
+  // bounding sphere test
+  mjtNum ssz = rmax*rmax + size[1]*size[1];
+  if (ray_sphere(pos, NULL, ssz, pnt, vec, NULL) < 0) {
+    if (normal) mju_zero3(normal);
+    return -1;
+  }
+
+  // map to local frame
+  mjtNum lpnt[3], lvec[3];
+  ray_map(pos, mat, pnt, vec, lpnt, lvec);
+
+  // init solution
+  mjtNum x = -1, sol;
+  int type = 0;  // -1: bottom, 0: round, 1: top
+
+  // flat sides
+  if (mju_abs(lvec[2]) > mjMINVAL) {
+    for (int side=-1; side <= 1; side+=2) {
+      // solution of: lpnt[2] + x*lvec[2] = side*height_size
+      sol = (side*size[1]-lpnt[2])/lvec[2];
+
+      // process if non-negative
+      if (sol >= 0) {
+        // intersection with horizontal face
+        mjtNum p0 = lpnt[0] + sol*lvec[0];
+        mjtNum p1 = lpnt[1] + sol*lvec[1];
+
+        // accept within radius of this side
+        mjtNum r = radius[(side+1)/2];
+        if (p0*p0 + p1*p1 <= r*r) {
+          if (x < 0 || sol < x) {
+            x = sol;
+            type = side;
+          }
+        }
+      }
+    }
+  }
+
+  // round side: radius r(z) = ra + rb*z, x^2 + y^2 = r(z)^2
+  mjtNum ra = 0.5*(radius[1] + radius[0]);
+  mjtNum rb = 0.5*(radius[1] - radius[0]) / size[1];
+  mjtNum r0 = ra + rb*lpnt[2];
+  mjtNum a = lvec[0]*lvec[0] + lvec[1]*lvec[1] - rb*rb*lvec[2]*lvec[2];
+  mjtNum b = lvec[0]*lpnt[0] + lvec[1]*lpnt[1] - rb*lvec[2]*r0;
+  mjtNum c = lpnt[0]*lpnt[0] + lpnt[1]*lpnt[1] - r0*r0;
+
+  // solve a*x^2 + 2*b*x + c = 0, a can be negative or zero
+  mjtNum xx[2] = {-1, -1};
+  if (mju_abs(a) < mjMINVAL) {
+    if (mju_abs(b) > mjMINVAL) {
+      xx[0] = -c / (2*b);
+    }
+  } else {
+    mjtNum det = b*b - a*c;
+    if (det >= 0) {
+      det = mju_sqrt(det);
+      xx[0] = (-b-det)/a;
+      xx[1] = (-b+det)/a;
+    }
+  }
+
+  // accept solutions between flat sides, on the nappe of the cone with non-negative radius
+  for (int i=0; i < 2; i++) {
+    mjtNum z = lpnt[2] + xx[i]*lvec[2];
+    if (xx[i] >= 0 && mju_abs(z) <= size[1] && ra + rb*z >= 0) {
+      if (x < 0 || xx[i] < x) {
+        x = xx[i];
+        type = 0;
+      }
+    }
+  }
+
+  // compute normal if required
+  if (normal) {
+    if (x < 0) {
+      mju_zero3(normal);
+    } else {
+      // round side: gradient of x^2 + y^2 - r(z)^2
+      if (type == 0) {
+        mjtNum z = lpnt[2] + lvec[2] * x;
+        normal[0] = lpnt[0] + lvec[0] * x;
+        normal[1] = lpnt[1] + lvec[1] * x;
+        normal[2] = -rb * (ra + rb*z);
+        mju_normalize3(normal);
+      }
+
+      // flat sides
+      else {
+        normal[0] = 0;
+        normal[1] = 0;
+        normal[2] = type;
+      }
+
+      // rotate into global frame
+      mju_mulMatVec3(normal, mat, normal);
+    }
+  }
+
+  return x;
+}
+
+
 // cylinder
 static mjtNum ray_cylinder(const mjtNum pos[3], const mjtNum mat[9], const mjtNum size[3],
                            const mjtNum pnt[3], const mjtNum vec[3], mjtNum normal[3]) {
+  // conical frustum
+  if (mju_cylinderBottom(size) != size[0]) {
+    return ray_frustum(pos, mat, size, pnt, vec, normal);
+  }
+
   // bounding sphere test
   mjtNum ssz = size[0]*size[0] + size[1]*size[1];
   if (ray_sphere(pos, NULL, ssz, pnt, vec, NULL) < 0) {

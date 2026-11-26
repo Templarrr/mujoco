@@ -1016,6 +1016,7 @@ void mjCMesh::FitGeom(mjCGeom* geom, double center[3]) {
       case mjGEOM_CYLINDER:
         geom->size[0] = (boxsz[0] + boxsz[1]) / 2;
         geom->size[1] = boxsz[2];
+        geom->size[2] = 0;  // fitted cylinder has equal radii
         break;
 
       case mjGEOM_ELLIPSOID:
@@ -1053,6 +1054,9 @@ void mjCMesh::FitGeom(mjCGeom* geom, double center[3]) {
 
         // special handling of capsule: consider curved cap
         if (geom->type == mjGEOM_CAPSULE) { geom->size[1] -= geom->size[0]; }
+
+        // fitted cylinder has equal radii
+        if (geom->type == mjGEOM_CYLINDER) { geom->size[2] = 0; }
         break;
 
       case mjGEOM_ELLIPSOID:

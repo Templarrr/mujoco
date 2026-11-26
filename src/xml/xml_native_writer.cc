@@ -1077,7 +1077,10 @@ void mjXWriter::OneGeom(XMLElement* elem, const mjCGeom* geom, mjCDef* def, stri
     WriteAttrTxt(elem, "name", geom->name);
     if (classname != geom->classname) { WriteAttrTxt(elem, "class", geom->classname); }
     if (mjGEOMINFO[geom->type]) {
-      WriteAttr(elem, "size", mjGEOMINFO[geom->type], geom->size, def->Geom().size);
+      // cylinder: size[2] is the radius at the -z end, written if given
+      int nsize = mjGEOMINFO[geom->type];
+      if (geom->type == mjGEOM_CYLINDER && geom->size[2] > 0) { nsize = 3; }
+      WriteAttr(elem, "size", nsize, geom->size, def->Geom().size);
     }
     // the mass which the geom takes from its class if none is written
     if (mjuu_defined(geom->mass)) {

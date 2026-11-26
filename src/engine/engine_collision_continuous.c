@@ -186,6 +186,30 @@ mjtNum mjc_GeomDist(const mjModel* m, int gi, const mjtNum* gpos, const mjtNum* 
         }
       }
       mju_copy3(nl, bestn);
+    } else if (type == mjGEOM_CYLINDER && mju_cylinderBottom(size) != size[0]) {
+      // conical frustum: penetration of round side measured normal to the slanted wall
+      mjtNum rt = size[0], rb = mju_cylinderBottom(size), h = size[1];
+      mjtNum len = mju_sqrt(4*h*h + (rb - rt)*(rb - rt));
+      mjtNum r = mju_sqrt(p[0] * p[0] + p[1] * p[1]);
+      mjtNum pr = (0.5*(rt + rb) + 0.5*(rt - rb)/h*p[2] - r) * 2*h/len;
+
+      // penetration of flat sides, which do not exist at the apex of a cone
+      mjtNum ptop = rt > 0 ? h - p[2] : mjMAXVAL;
+      mjtNum pbot = rb > 0 ? h + p[2] : mjMAXVAL;
+      mjtNum pz = mju_min(ptop, pbot);
+      if (pr < pz) {
+        dist = -pr;
+        if (r > mjMINVAL) {
+          nl[0] = p[0] / r * 2*h/len;
+          nl[1] = p[1] / r * 2*h/len;
+        } else {
+          nl[0] = 2*h/len;
+        }
+        nl[2] = (rb - rt)/len;
+      } else {
+        dist = -pz;
+        nl[2] = ptop <= pbot ? 1 : -1;
+      }
     } else if (type == mjGEOM_CYLINDER) {
       mjtNum r = mju_sqrt(p[0] * p[0] + p[1] * p[1]);
       mjtNum pr = size[0] - r;

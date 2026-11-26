@@ -23,6 +23,7 @@
 #include "engine/engine_collision_convex.h"
 #include "engine/engine_util_blas.h"
 #include "engine/engine_util_errmem.h"
+#include "engine/engine_util_misc.h"
 
 #define mjMINVAL2 (mjMINVAL * mjMINVAL)
 #define mjMAXVAL2 (mjMAXVAL * mjMAXVAL)
@@ -2120,6 +2121,12 @@ static int meshEdgeNormals(mjtNum* res, mjtNum* endverts, int dim, mjCCDObj* obj
 // try recovering the cylinder normal from vertex index
 static int cylinderNormals(mjtNum res[9], int resind[3], int dim, mjCCDObj* obj,
                            const int vi[3], const mjtNum dir[3]) {
+  // apex of a cone: no face
+  mjtNum radius = vi[0] ? mju_cylinderBottom(obj->size) : obj->size[0];
+  if (radius <= 0) {
+    return 0;
+  }
+
   if (dim == 1) {
     globalcoord(res, obj->mat, NULL, 0, 0, vi[0] ? -1.0 : 1.0);
     resind[0] = vi[0];
@@ -2257,11 +2264,27 @@ static int boxEdgeNormals(mjtNum res[9], mjtNum endverts[9], int dim, mjCCDObj* 
 
 
 // recover edge normal of a cylinder
-static inline int cylinderEdgeNormals(mjtNum res[3], int dim, mjCCDObj* obj) {
+static inline int cylinderEdgeNormals(mjtNum res[3], int dim, mjCCDObj* obj, const mjtNum x[3]) {
   if (dim == 1 || dim == 2) {
     res[0] = obj->mat[2];
     res[1] = obj->mat[5];
     res[2] = obj->mat[8];
+
+    // conical frustum: edge through the witness point, from the bottom rim to the top rim
+    mjtNum bottom = mju_cylinderBottom(obj->size);
+    if (bottom != obj->size[0]) {
+      mjtNum u[3];
+      sub3(u, x, obj->pos);
+      addScl3(u, u, res, -dot3(u, res));
+      mjtNum n = norm3(u);
+      if (n < mjMINVAL) {
+        return 0;
+      }
+      scl3(u, u, (obj->size[0] - bottom) / n);
+      scl3(res, res, 2*obj->size[1]);
+      add3(res, res, u);
+      mju_normalize3(res);
+    }
     return 1;
   }
   return 0;
@@ -2270,8 +2293,9 @@ static inline int cylinderEdgeNormals(mjtNum res[3], int dim, mjCCDObj* obj) {
 
 // recover contact edge of a cylinder from a colliding geom face normal
 static inline int cylinderEdge(mjtNum res[6], mjCCDObj* obj, const mjtNum normal[3]) {
-  // cylinder size data
-  mjtNum radius = obj->size[0];
+  // cylinder size data: radius at the top (+z) and bottom (-z), equal unless a frustum
+  mjtNum top = obj->size[0];
+  mjtNum bottom = mju_cylinderBottom(obj->size);
   mjtNum halflen = obj->size[1];
 
   // project the face normal onto a vector perpendicular to the cylinder axis
@@ -2281,13 +2305,11 @@ static inline int cylinderEdge(mjtNum res[6], mjCCDObj* obj, const mjtNum normal
     return 0;
   }
 
-  // scale the projected vector to cylinder radius pointing towards the face
-  mjtNum scl = -radius / n;
-
-  // compute endpoints of cylinder edge parallel to the cylinder axis
+  // compute endpoints of cylinder edge on the rims, pointing towards the face
   mjtNum center[3];
-  addScl3(center, obj->pos, proj, scl);
+  addScl3(center, obj->pos, proj, -bottom / n);
   addScl3(res + 0, center, axis, -halflen);
+  addScl3(center, obj->pos, proj, -top / n);
   addScl3(res + 3, center, axis, halflen);
   return 2;
 }
@@ -2324,11 +2346,13 @@ static int cylinderFace(mjtNum res[48], mjCCDObj* obj, int idx) {
    -1.000000000000000, -0.923879532511287, -0.707106781186548, -0.382683432365090
   };
 
-  // compute 16-gon cylinder face (size[0]: radius, size[1]: half-length)
+  // compute 16-gon cylinder face (size[0]: radius at top, size[1]: half-length, size[2]: radius
+  // at bottom if positive)
   mjtNum sgn = idx ? -1.0 : 1.0;
+  mjtNum radius = idx ? mju_cylinderBottom(obj->size) : obj->size[0];
   for (int i = 0; i < 16; i++) {
-    mjtNum x = cos_16[i] * obj->size[0];
-    mjtNum y = -sin_16[i] * obj->size[0] * sgn;  // use sgn for correct orientation
+    mjtNum x = cos_16[i] * radius;
+    mjtNum y = -sin_16[i] * radius * sgn;  // use sgn for correct orientation
     globalcoord(res + 3*i, obj->mat, obj->pos, x, y, sgn * obj->size[1]);
   }
   return 16;
@@ -2511,7 +2535,7 @@ static inline int geomEdgeNormals(mjtNum* res, mjtNum* endverts, int dim, mjCCDO
   } else if (obj->geom_type == mjGEOM_MESH) {
     return meshEdgeNormals(res, endverts, dim, obj, triface, trifacei);
   } else if (obj->geom_type == mjGEOM_CYLINDER) {
-    return cylinderEdgeNormals(res, dim, obj);
+    return cylinderEdgeNormals(res, dim, obj, x);
   } else if (obj->geom_type == mjGEOM_CAPSULE) {
     return capsuleEdgeNormals(res, endverts, obj, triface, x);
   }

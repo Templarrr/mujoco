@@ -171,9 +171,12 @@ void UpdateGeomRBound(mjModel* model, bool has_geom_size, bool has_geom_dataid) 
         case mjGEOM_CAPSULE:
           model->geom_rbound[g] = size[0] + size[1];
           break;
-        case mjGEOM_CYLINDER:
-          model->geom_rbound[g] = std::hypot(size[0], size[1]);
+        case mjGEOM_CYLINDER: {
+          // conical frustum: size[2] is the radius at the -z end, if positive
+          const mjtNum radius = std::max(size[0], size[2]);
+          model->geom_rbound[g] = std::hypot(radius, size[1]);
           break;
+        }
         case mjGEOM_ELLIPSOID:
           model->geom_rbound[g] = std::max({size[0], size[1], size[2]});
           break;

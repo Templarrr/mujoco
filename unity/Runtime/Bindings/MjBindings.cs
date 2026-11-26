@@ -187,6 +187,7 @@ public enum mjtGeom : int{
   mjGEOM_LABEL = 107,
   mjGEOM_TRIANGLE = 108,
   mjGEOM_DISC = 109,
+  mjGEOM_FRUSTUM = 110,
   mjGEOM_NONE = 1001,
 }
 public enum mjtProjection : int{

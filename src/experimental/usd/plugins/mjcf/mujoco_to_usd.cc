@@ -1573,6 +1573,13 @@ class ModelWriter {
 
     int geom_idx = mjs_getId(geom->element);
     mjtNum *geom_size = &model_->geom_size[geom_idx * 3];
+
+    // TODO: export a conical frustum (size[2] > 0 and differs from size[0])
+    // with its own radii; UsdGeomCylinder has a single radius
+    if (geom_size[2] > 0 && geom_size[2] != geom_size[0]) {
+      TF_WARN(UnsupportedGeomTypeError,
+              "Conical frustum geom %d is exported as a cylinder", geom_idx);
+    }
     return WriteCylinder(name, geom_size, body_path);
   }
 

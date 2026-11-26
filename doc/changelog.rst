@@ -7,6 +7,24 @@ Upcoming Version (not yet released)
 
 General
 ^^^^^^^
+- Added :ref:`conical frustums and cones<body-geom-frustum>`: a :ref:`cylinder<body-geom-type>` geom takes an optional
+  third size parameter, the radius at its -Z end (or a second one with :ref:`fromto<body-geom-fromto>`, the radius at
+  the "to" point), and is a cone when one of its two radii is 0. Collisions, ray casting, signed distances, bounding
+  volumes, mass, center of mass and inertia are exact; plane and sphere collisions have dedicated routines. Added the
+  rendering-only geom type :ref:`mjGEOM_FRUSTUM<mjtGeom>`, to which :ref:`mjv_updateScene` maps these geoms. See
+  `model/frustum/ <https://github.com/google-deepmind/mujoco/tree/main/model/frustum/>`__ for example models.
+
+  .. image:: images/XMLreference/frustum_falling.gif
+     :width: 45%
+     :align: right
+
+  .. admonition:: Behavior change
+     :class: attention
+
+     A cylinder geom given by :ref:`fromto<body-geom-fromto>` with two size parameters used to ignore the second one;
+     it is now the radius at the "to" point. Cylinder geoms with a positive third size parameter, which used to be
+     ignored, are now conical frustums. Cylinder :ref:`sites<body-site>` are unchanged.
+
 - Added :ref:`mju_QP`, a dual active-set solver for dense convex quadratic programs with bounds and two-sided linear
   constraints. Constraints can be soft: a soft constraint holds exactly up to a threshold on its multiplier and then
   yields with a given compliance, so problems with soft constraints remain feasible. The solver can be warmstarted

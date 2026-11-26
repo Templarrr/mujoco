@@ -97,6 +97,111 @@ int mjc_PlaneCapsule(const mjModel* m, mjData* d, mjPreContact* con, int g1, int
 }
 
 
+// plane : conical frustum (cylinder with different radii at its two ends)
+static int mjc_PlaneFrustum(const mjModel* m, mjData* d, mjPreContact* con, int g1, int g2,
+                            mjtNum margin) {
+  const mjtNum* pos1 = d->geom_xpos + 3*g1;
+  const mjtNum* pos2 = d->geom_xpos + 3*g2;
+  const mjtNum* mat1 = d->geom_xmat + 9*g1;
+  const mjtNum* mat2 = d->geom_xmat + 9*g2;
+  const mjtNum* size2 = m->geom_size + 3*g2;
+
+  mjtNum normal[3] = {mat1[2], mat1[5], mat1[8]};
+  mjtNum axis[3] = {mat2[2], mat2[5], mat2[8]};
+
+  // radii at the ends along +axis (near) and -axis (far)
+  mjtNum rnear = size2[0];
+  mjtNum rfar = mju_cylinderBottom(size2);
+
+  // project, make sure axis points towards plane
+  mjtNum prjaxis = mju_dot3(normal, axis);
+  if (prjaxis > 0) {
+    mju_scl3(axis, axis, -1);
+    prjaxis = -prjaxis;
+    mjtNum tmp = rnear;
+    rnear = rfar;
+    rfar = tmp;
+  }
+
+  // compute normal distance to frustum center
+  mjtNum vec[3] = {pos2[0] - pos1[0], pos2[1] - pos1[1], pos2[2] - pos1[2]};
+  mjtNum dist0 = mju_dot3(vec, normal);
+
+  // remove component of -normal along axis, compute length
+  mju_scl3(vec, axis, prjaxis);
+  mju_subFrom3(vec, normal);
+  mjtNum len_sqr = mju_dot3(vec, vec);
+
+  // general configuration: normalize vector
+  if (len_sqr >= mjMINVAL*mjMINVAL) {
+    mju_scl3(vec, vec, 1/mju_sqrt(len_sqr));
+  }
+
+  // disks parallel to plane: pick x-axis of frustum
+  else {
+    vec[0] = mat2[0];
+    vec[1] = mat2[3];
+    vec[2] = mat2[6];
+  }
+
+  // project unit vector on normal
+  mjtNum prjvec = mju_dot3(vec, normal);
+
+  // scale axis by half-length
+  mju_scl3(axis, axis, size2[1]);
+  prjaxis *= size2[1];
+
+  // distances of the points on the rims of the near and far disks closest to the plane
+  mjtNum dist[2] = {dist0 + prjaxis + rnear*prjvec, dist0 - prjaxis + rfar*prjvec};
+  mjtNum radius[2] = {rnear, rfar};
+  mjtNum sgn[2] = {1, -1};
+
+  // nearest point is above margin: no contacts
+  if (dist[0] > margin && dist[1] > margin) {
+    return 0;
+  }
+
+  // check rim points, construct contacts
+  int cnt = 0;
+  for (int i=0; i < 2; i++) {
+    if (dist[i] <= margin) {
+      con[cnt].dist = dist[i];
+      mji_addScl3(con[cnt].pos, pos2, vec, radius[i]);
+      mji_addToScl3(con[cnt].pos, axis, sgn[i]);
+      mji_addToScl3(con[cnt].pos, normal, -con[cnt].dist * 0.5);
+      mji_copy3(con[cnt].normal, normal);
+      mji_zero3(con[cnt].tangent);
+      cnt++;
+    }
+  }
+
+  // try to add triangle points on the deeper disk, unless it is the apex of a cone
+  int k = dist[0] <= dist[1] ? 0 : 1;
+  mjtNum dist1 = dist0 + sgn[k]*prjaxis - 0.5*radius[k]*prjvec;
+  if (radius[k] > 0 && dist1 <= margin) {
+    // compute sideways vector: vec1
+    mjtNum vec1[3];
+    mji_cross(vec1, vec, axis);
+    mju_normalize3(vec1);
+    mju_scl3(vec1, vec1, radius[k] * mju_sqrt(3.0) / 2);
+
+    // add points A and B
+    for (int j=-1; j <= 1; j+=2) {
+      con[cnt].dist = dist1;
+      mji_addScl3(con[cnt].pos, pos2, vec1, j);
+      mji_addToScl3(con[cnt].pos, axis, sgn[k]);
+      mji_addToScl3(con[cnt].pos, vec, -0.5*radius[k]);
+      mji_addToScl3(con[cnt].pos, normal, -con[cnt].dist * 0.5);
+      mji_copy3(con[cnt].normal, normal);
+      mji_zero3(con[cnt].tangent);
+      cnt++;
+    }
+  }
+
+  return cnt;
+}
+
+
 // plane : cylinder
 int mjc_PlaneCylinder(const mjModel* m, mjData* d, mjPreContact* con, int g1, int g2,
                       mjtNum margin) {
@@ -105,6 +210,11 @@ int mjc_PlaneCylinder(const mjModel* m, mjData* d, mjPreContact* con, int g1, in
   const mjtNum* mat1 = d->geom_xmat + 9*g1;
   const mjtNum* mat2 = d->geom_xmat + 9*g2;
   const mjtNum* size2 = m->geom_size + 3*g2;
+
+  // conical frustum
+  if (mju_cylinderBottom(size2) != size2[0]) {
+    return mjc_PlaneFrustum(m, d, con, g1, g2, margin);
+  }
 
   mjtNum normal[3] = {mat1[2], mat1[5], mat1[8]};
   mjtNum axis[3] = {mat2[2], mat2[5], mat2[8]};
@@ -341,6 +451,109 @@ int mjc_SphereCapsule(const mjModel* m, mjData* d, mjPreContact* con, int g1, in
 }
 
 
+// closest point to p on the 2D segment from a to b
+static void closestOnSegment2(mjtNum res[2], const mjtNum p[2], const mjtNum a[2],
+                              const mjtNum b[2]) {
+  mjtNum ab[2] = {b[0] - a[0], b[1] - a[1]};
+  mjtNum len_sqr = ab[0]*ab[0] + ab[1]*ab[1];
+  mjtNum t = len_sqr > mjMINVAL ? ((p[0] - a[0])*ab[0] + (p[1] - a[1])*ab[1]) / len_sqr : 0;
+  t = mju_clip(t, 0, 1);
+  res[0] = a[0] + t*ab[0];
+  res[1] = a[1] + t*ab[1];
+}
+
+
+// sphere : conical frustum (cylinder with different radii at its two ends)
+//  the problem is solved in the half-plane (rho, z) containing the sphere center and the axis,
+//  where the frustum is the trapezoid with corners (0, -h), (rb, -h), (rt, h), (0, h)
+static int mjc_SphereFrustum(const mjModel* m, mjData* d, mjPreContact* con, int g1, int g2,
+                             mjtNum margin) {
+  const mjtNum* pos1 = d->geom_xpos + 3*g1;
+  const mjtNum* pos2 = d->geom_xpos + 3*g2;
+  const mjtNum* mat1 = d->geom_xmat + 9*g1;
+  const mjtNum* mat2 = d->geom_xmat + 9*g2;
+  const mjtNum* size1 = m->geom_size + 3*g1;
+  const mjtNum* size2 = m->geom_size + 3*g2;
+
+  // get frustum sizes and axis
+  mjtNum rt = size2[0];
+  mjtNum rb = mju_cylinderBottom(size2);
+  mjtNum h = size2[1];
+  mjtNum axis[3] = {mat2[2], mat2[5], mat2[8]};
+
+  // sphere center in the (rho, z) half-plane, with radial unit vector u
+  mjtNum vec[3] = {pos1[0] - pos2[0], pos1[1] - pos2[1], pos1[2] - pos2[2]};
+  mjtNum z = mju_dot3(axis, vec);
+  mjtNum u[3];
+  mji_addScl3(u, vec, axis, -z);
+  mjtNum rho = mju_normalize3(u);
+  if (rho < mjMINVAL) {
+    u[0] = mat2[0];
+    u[1] = mat2[3];
+    u[2] = mat2[6];
+    rho = 0;
+  }
+  mjtNum p[2] = {rho, z};
+
+  // corners and outward normals of the edges: bottom cap, round side, top cap
+  mjtNum corner[4][2] = {{0, -h}, {rb, -h}, {rt, h}, {0, h}};
+  mjtNum len = mju_sqrt(4*h*h + (rb - rt)*(rb - rt));
+  mjtNum edge_normal[3][2] = {{0, -1}, {2*h/len, (rb - rt)/len}, {0, 1}};
+
+  // signed distances to the lines of the edges, skip edges of zero length (apex of a cone)
+  int inside = 1, best = -1;
+  mjtNum depth = 0;
+  for (int i=0; i < 3; i++) {
+    mjtNum sdist = (p[0] - corner[i+1][0])*edge_normal[i][0] +
+                   (p[1] - corner[i+1][1])*edge_normal[i][1];
+    if (sdist > 0) {
+      inside = 0;
+    }
+    int degenerate = (i == 0 && rb <= 0) || (i == 2 && rt <= 0);
+    if (!degenerate && (best < 0 || sdist > depth)) {
+      best = i;
+      depth = sdist;
+    }
+  }
+
+  // sphere center inside: use plane-sphere with the plane of the nearest face
+  if (inside) {
+    mjtNum nrm[3], pos_face[3];
+    mji_scl3(nrm, u, edge_normal[best][0]);
+    mji_addToScl3(nrm, axis, edge_normal[best][1]);
+    mji_addScl3(pos_face, pos2, u, corner[best+1][0]);
+    mji_addToScl3(pos_face, axis, corner[best+1][1]);
+    const mjtNum mat_face[9] = {0, 0, nrm[0], 0, 0, nrm[1], 0, 0, nrm[2]};
+    int ncon = mjraw_PlaneSphere(con, margin, pos_face, mat_face, size2, pos1, mat1, size1);
+
+    if (ncon) {
+      // flip direction normal (because mjGEOM_PLANE < mjGEOM_SPHERE < mjGEOM_CYLINDER)
+      mju_scl3(con[0].normal, con[0].normal, -1);
+    }
+    return ncon;
+  }
+
+  // sphere center outside: find the closest point on the boundary of the trapezoid
+  mjtNum closest[2], dist_sqr = -1;
+  for (int i=0; i < 3; i++) {
+    mjtNum c[2];
+    closestOnSegment2(c, p, corner[i], corner[i+1]);
+    mjtNum dsqr = (p[0] - c[0])*(p[0] - c[0]) + (p[1] - c[1])*(p[1] - c[1]);
+    if (dist_sqr < 0 || dsqr < dist_sqr) {
+      dist_sqr = dsqr;
+      closest[0] = c[0];
+      closest[1] = c[1];
+    }
+  }
+
+  // sphere-sphere with point sphere at the closest point
+  mji_addScl3(vec, pos2, u, closest[0]);
+  mji_addToScl3(vec, axis, closest[1]);
+  mjtNum size_zero[1] = {0};
+  return mjraw_SphereSphere(con, margin, pos1, mat1, size1, vec, mat2, size_zero);
+}
+
+
 // sphere : cylinder
 int mjc_SphereCylinder(const mjModel* m, mjData* d, mjPreContact* con, int g1, int g2,
                        mjtNum margin) {
@@ -350,6 +563,11 @@ int mjc_SphereCylinder(const mjModel* m, mjData* d, mjPreContact* con, int g1, i
   const mjtNum* mat2 = d->geom_xmat + 9*g2;
   const mjtNum* size1 = m->geom_size + 3*g1;
   const mjtNum* size2 = m->geom_size + 3*g2;
+
+  // conical frustum
+  if (mju_cylinderBottom(size2) != size2[0]) {
+    return mjc_SphereFrustum(m, d, con, g1, g2, margin);
+  }
 
   // get cylinder sizes and axis
   mjtNum radius = size2[0];

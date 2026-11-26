@@ -68,6 +68,14 @@ typedef struct {
 // dynprm = actuator_dynprm row, gainprm = actuator_gainprm row
 mjDCMotorSlots mj_dcmotorSlots(const mjtNum* dynprm, const mjtNum* gainprm);
 
+//------------------------------ misc geometry -----------------------------------------------------
+
+// radius of a cylinder geom at its -z end: size[2] if positive, otherwise size[0], the radius at its
+// +z end; the cylinder is a conical frustum (a cone if one radius is 0) if the two radii differ
+static inline mjtNum mju_cylinderBottom(const mjtNum size[3]) {
+  return size[2] > 0 ? size[2] : size[0];
+}
+
 // all 3 semi-axes of a geom
 MJAPI void mju_geomSemiAxes(mjtNum semiaxes[3], const mjtNum size[3], mjtGeom type);
 

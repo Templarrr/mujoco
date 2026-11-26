@@ -14,6 +14,7 @@
 
 #include "render/filament/support/model_renderables.h"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <memory>
@@ -86,9 +87,14 @@ static bool GetSize(const mjModel* model, mjtGeom type, const mjtNum* size,
       out[1] = size[0];
       return true;
     case mjGEOM_CAPSULE:
-    case mjGEOM_CYLINDER:
       out[2] = size[1];
       out[1] = size[0];
+      return true;
+    case mjGEOM_CYLINDER:
+      // TODO: add a frustum mesh; for now, a conical frustum (size[2] > 0) is
+      // drawn as its bounding cylinder
+      out[0] = out[1] = size[2] > 0 ? std::max(size[0], size[2]) : size[0];
+      out[2] = size[1];
       return true;
     case mjGEOM_TRIANGLE:
     case mjGEOM_PLANE:
@@ -108,6 +114,7 @@ static bool GetSize(const mjModel* model, mjtGeom type, const mjtNum* size,
     case mjGEOM_FLEX:
     case mjGEOM_SKIN:
     case mjGEOM_DISC:
+    case mjGEOM_FRUSTUM:
     case mjGEOM_NONE:
     case mjGEOM_LABEL:
       return false;
@@ -144,6 +151,9 @@ static void SetGeomMesh(mjrfRenderable* renderable, ModelResources* model_objs,
       break;
     case mjGEOM_DISC:
       mju_error("Disc meshes should be handled separately.");
+      break;
+    case mjGEOM_FRUSTUM:
+      mju_error("Frustum is a cylinder in the model.");
       break;
     case mjGEOM_PLANE:
     case mjGEOM_SPHERE:

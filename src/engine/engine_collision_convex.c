@@ -313,6 +313,21 @@ static void mjc_cylinderSupport(mjtNum res[3], mjCCDObj* obj, const mjtNum dir[3
   mulMatTVec3(local_dir, mat, dir);
 
   mjtNum n2 = local_dir[0]*local_dir[0] + local_dir[1]*local_dir[1];
+  mjtNum bottom = mju_cylinderBottom(size);
+
+  // conical frustum: support point on the rim of the top or bottom disk
+  if (bottom != size[0]) {
+    mjtNum n = n2 >= mjMINVAL2 ? mju_sqrt(n2) : 0;
+    int top = size[0]*n + size[1]*local_dir[2] >= bottom*n - size[1]*local_dir[2];
+    mjtNum scl = n > 0 ? (top ? size[0] : bottom) / n : 0;
+    local_supp[0] = scl * local_dir[0];
+    local_supp[1] = scl * local_dir[1];
+    local_supp[2] = top ? size[1] : -size[1];
+    obj->vertindex = top ? 0 : 1;
+    localToGlobal(res, mat, local_supp, pos);
+    return;
+  }
+
   mjtNum scl = n2 >= mjMINVAL2 ? size[0] / mju_sqrt(n2) : 0;
   local_supp[0] = scl * local_dir[0];
   local_supp[1] = scl * local_dir[1];
@@ -632,6 +647,22 @@ void mjccd_support(const void *_obj, const ccd_vec3_t *_dir, ccd_vec3_t *vec) {
     break;
 
   case mjGEOM_CYLINDER:
+    // conical frustum: support on the rim of the top or bottom disk
+    if (mju_cylinderBottom(size) != size[0]) {
+      mjtNum bottom = mju_cylinderBottom(size);
+      tmp = mju_sqrt(local_dir[0]*local_dir[0] + local_dir[1]*local_dir[1]);
+      int top = size[0]*tmp + size[1]*local_dir[2] >= bottom*tmp - size[1]*local_dir[2];
+      mjtNum radius = top ? size[0] : bottom;
+      if (tmp > mjMINVAL) {
+        res[0] = local_dir[0]/tmp*radius;
+        res[1] = local_dir[1]/tmp*radius;
+      } else {
+        res[0] = res[1] = 0;
+      }
+      res[2] = top ? size[1] : -size[1];
+      break;
+    }
+
     // set result in XY plane: support on circle
     tmp = mju_sqrt(local_dir[0]*local_dir[0] + local_dir[1]*local_dir[1]);
     if (tmp > mjMINVAL) {
@@ -879,6 +910,11 @@ void mjc_initCCDObjSite(mjCCDObj* obj, const mjModel* m, const mjData* d, int s,
     mji_copy3(obj->size, m->site_size+3*s);
     obj->size[3] = 0;
     obj->geom_type = m->site_type[s];
+
+    // cylinder sites are not conical frustums: ignore size[2]
+    if (obj->geom_type == mjGEOM_CYLINDER) {
+      obj->size[2] = 0;
+    }
     if (obj->geom_type == mjGEOM_MESH && dataid >= 0) {
       mjtNum xquat[4];
       mji_mulQuat(xquat, d->site_xquat+4*s, m->mesh_quat+4*dataid);
@@ -1490,27 +1526,39 @@ void mjc_fixNormal(const mjModel* m, const mjData* d, mjPreContact* con, int g1,
         }
         break;
 
-      case mjGEOM_CYLINDER:
+      case mjGEOM_CYLINDER: {
         // skip if within 5% length of flat wall
         if (mju_abs(pos1[2]) > 0.95*size[1]) {
           break;
         }
 
+        // radius at the height of the contact, slope of the round wall (0 if not a frustum)
+        mjtNum bottom = mju_cylinderBottom(size);
+        mjtNum slope = (size[0] - bottom) / (2*size[1]);
+        mjtNum radius = bottom != size[0] ? 0.5*(size[0] + bottom) + slope*pos1[2] : size[0];
+
         // compute distances to flat and round wall
         dst1 = mju_abs(size[1]-mju_abs(pos1[2]));
-        dst2 = mju_abs(size[0]-mju_norm(pos1, 2));
+        dst2 = mju_abs(radius-mju_norm(pos1, 2));
 
         // require 4x closer to round than flat wall
         if (dst1 < 0.25*dst2) {
           break;
         }
 
-        // set normal for round wall
+        // round wall of a cone: skip near the apex, where the normal is undefined
+        mjtNum rxy = mju_norm(pos1, 2);
+        if (slope && rxy < mjMINVAL) {
+          break;
+        }
+
+        // set normal for round wall, tilted along the axis for a frustum
         nrm[0] = pos1[0];
         nrm[1] = pos1[1];
-        nrm[2] = 0;
+        nrm[2] = slope ? -slope*rxy : 0;
         processed[i] = 1;
         break;
+      }
 
       default:
         // do nothing: only sphere, capsule, ellipsoid and cylinder are processed
