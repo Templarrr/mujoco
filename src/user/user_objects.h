@@ -71,7 +71,7 @@ class mjXURDF;    // defined in xml_urdf.h
 //------------------------- helper constants, classes and functions --------------------------------
 
 // number of positive size parameters for each geom type
-const int mjGEOMINFO[mjNGEOMTYPES] = {3, 0, 1, 2, 3, 2, 3, 0};
+const int mjGEOMINFO[mjNGEOMTYPES] = {3, 0, 1, 2, 3, 2, 3, 0, 0, 3};
 
 // error information
 class [[nodiscard]] mjCError {

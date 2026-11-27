@@ -1,4 +1,4 @@
-<mujoco model="frustum gallery">
+<mujoco model="cone gallery">
   <visual>
     <global offwidth="1600" offheight="800"/>
     <quality shadowsize="4096" offsamples="8"/>
@@ -21,32 +21,32 @@
     <camera name="cam" pos="0.1 -2.3 0.9" xyaxes="1 0 0 0 .35 1" fovy="45"/>
     <geom type="plane" size="3 3 .1" material="grid"/>
 
-    <!-- cylinder: size="radius half-height" (unchanged) -->
+    <!-- cylinder: size="radius half-height" -->
     <geom type="cylinder" size=".15 .2" pos="-1.25 0 .2" material="blue"/>
 
-    <!-- frustum: size="top-radius half-height bottom-radius" -->
-    <geom type="cylinder" size=".08 .2 .18" pos="-.75 0 .2" material="orange"/>
+    <!-- frustum: size="bottom-radius half-height top-radius" -->
+    <geom type="cone" size=".18 .2 .08" pos="-.75 0 .2" material="orange"/>
 
-    <!-- cone: top radius 0 -->
-    <geom type="cylinder" size="0 .25 .17" pos="-.25 0 .25" material="green"/>
+    <!-- cone: size="bottom-radius half-height", top radius 0 -->
+    <geom type="cone" size=".17 .25" pos="-.25 0 .25" material="green"/>
 
     <!-- inverted frustum: larger top -->
-    <geom type="cylinder" size=".19 .15 .07" pos=".25 0 .15" material="blue"/>
+    <geom type="cone" size=".07 .15 .19" pos=".25 0 .15" material="blue"/>
 
     <!-- bottle: cylinder, frustum neck and cylinder, connected with fromto -->
     <geom type="cylinder" size=".12" fromto=".75 0 0 .75 0 .32" material="glass"/>
-    <geom type="cylinder" size=".12 .035" fromto=".75 0 .32 .75 0 .47" material="glass"/>
+    <geom type="cone" size=".12 .035" fromto=".75 0 .32 .75 0 .47" material="glass"/>
     <geom type="cylinder" size=".035" fromto=".75 0 .47 .75 0 .58" material="glass"/>
 
     <!-- screwdriver: handle with tapered ends and a cone tip, lying on the floor -->
-    <geom type="cylinder" size=".035 .055" fromto="-.55 -.55 .055 -.49 -.55 .055" material="wood"/>
+    <geom type="cone" size=".035 .055" fromto="-.55 -.55 .055 -.49 -.55 .055" material="wood"/>
     <geom type="cylinder" size=".055" fromto="-.49 -.55 .055 -.25 -.55 .055" material="wood"/>
-    <geom type="cylinder" size=".055 .03" fromto="-.25 -.55 .055 -.19 -.55 .055" material="wood"/>
+    <geom type="cone" size=".055 .03" fromto="-.25 -.55 .055 -.19 -.55 .055" material="wood"/>
     <geom type="cylinder" size=".012" fromto="-.19 -.55 .055 .07 -.55 .055" material="steel"/>
-    <geom type="cylinder" size=".012 0" fromto=".07 -.55 .055 .11 -.55 .055" material="steel"/>
+    <geom type="cone" size=".012 0" fromto=".07 -.55 .055 .11 -.55 .055" material="steel"/>
 
     <!-- funnel: inverted cone and a thin spout -->
-    <geom type="cylinder" size=".16 .012" fromto="1.2 -.4 .32 1.2 -.4 .14" material="orange"/>
+    <geom type="cone" size=".16 .012" fromto="1.2 -.4 .32 1.2 -.4 .14" material="orange"/>
     <geom type="cylinder" size=".012" fromto="1.2 -.4 .14 1.2 -.4 0" material="orange"/>
   </worldbody>
 </mujoco>

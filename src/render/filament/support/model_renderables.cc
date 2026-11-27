@@ -90,10 +90,8 @@ static bool GetSize(const mjModel* model, mjtGeom type, const mjtNum* size,
       out[2] = size[1];
       out[1] = size[0];
       return true;
-    case mjGEOM_FRUSTUM:
-      // A conical frustum geom is a cylinder in the model, with the radius at
-      // the -z end in size[2]; renderable frustums are sized (top, bottom,
-      // half-height).
+    case mjGEOM_CONE:
+      // Cone renderables are sized (bottom radius, top radius, half-height).
       out[1] = size[2];
       out[2] = size[1];
       return true;
@@ -122,17 +120,6 @@ static bool GetSize(const mjModel* model, mjtGeom type, const mjtNum* size,
       mju_warning("Unsupported geom type: %d", type);
       return false;
   }
-}
-
-// Returns the type used to render geom i: conical frustums are cylinders in
-// the model, with a nonzero radius at the -z end in size[2].
-static mjtGeom GeomRenderType(const mjModel* model, int i) {
-  const mjtGeom type = (mjtGeom)model->geom_type[i];
-  const mjtNum* size = model->geom_size + (3 * i);
-  if (type == mjGEOM_CYLINDER && size[2] > 0 && size[2] != size[0]) {
-    return mjGEOM_FRUSTUM;
-  }
-  return type;
 }
 
 static void SetGeomMesh(mjrfRenderable* renderable, ModelResources* model_objs,
@@ -169,7 +156,7 @@ static void SetGeomMesh(mjrfRenderable* renderable, ModelResources* model_objs,
     case mjGEOM_BOX:
     case mjGEOM_CAPSULE:
     case mjGEOM_CYLINDER:
-    case mjGEOM_FRUSTUM:
+    case mjGEOM_CONE:
     case mjGEOM_ARROW:
     case mjGEOM_ARROW1:
     case mjGEOM_ARROW2:
@@ -255,7 +242,7 @@ void ModelRenderables::UpdateQuality() {
   numquads_ = nquad;
 
   for (int i = 0; i < model->ngeom; ++i) {
-    const mjtGeom type = GeomRenderType(model, i);
+    const mjtGeom type = (mjtGeom)model->geom_type[i];
     if (type != mjGEOM_MESH && type != mjGEOM_SDF) {
       SetGeomMesh(geoms_[i].get(), model_resources_, type, model->geom_dataid[i]);
     }
@@ -494,7 +481,7 @@ void ModelRenderables::AddGeomGeoms() {
 
   geoms_.reserve(model->ngeom);
   for (int i = 0; i < model->ngeom; ++i) {
-    const mjtGeom type = GeomRenderType(model, i);
+    const mjtGeom type = (mjtGeom)model->geom_type[i];
 
     mjrfRenderableParams params;
     mjrf_defaultRenderableParams(&params);

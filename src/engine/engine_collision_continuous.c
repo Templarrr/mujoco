@@ -77,13 +77,13 @@ mjtNum mjc_SegSeg(const mjtNum* p1, const mjtNum* p2, const mjtNum* q1, const mj
 int mjc_GeomSupported(int type) {
   return type == mjGEOM_PLANE || type == mjGEOM_SPHERE || type == mjGEOM_CAPSULE ||
          type == mjGEOM_ELLIPSOID || type == mjGEOM_CYLINDER || type == mjGEOM_BOX ||
-         type == mjGEOM_MESH;
+         type == mjGEOM_MESH || type == mjGEOM_CONE;
 }
 
 
 // signed distance from a static geom's surface to world point x (positive outside) + outward unit
-// normal n. Closed-form for plane/sphere/capsule/box, GJK for mesh/cylinder/ellipsoid; returns
-// +large (no contact) for other types.
+// normal n. Closed-form for plane/sphere/capsule/box, GJK for mesh/cylinder/ellipsoid/cone;
+// returns +large (no contact) for other types.
 mjtNum mjc_GeomDist(const mjModel* m, int gi, const mjtNum* gpos, const mjtNum* gmat,
                     const mjtNum* x, mjtNum* n, mjtNum distmax) {
   int type = m->geom_type[gi];
@@ -143,7 +143,8 @@ mjtNum mjc_GeomDist(const mjModel* m, int gi, const mjtNum* gpos, const mjtNum* 
       dist = -best;
       nl[ax] = p[ax] > 0 ? 1 : -1;
     }
-  } else if (type == mjGEOM_MESH || type == mjGEOM_CYLINDER || type == mjGEOM_ELLIPSOID) {
+  } else if (type == mjGEOM_MESH || type == mjGEOM_CYLINDER || type == mjGEOM_ELLIPSOID ||
+             type == mjGEOM_CONE) {
     if (type == mjGEOM_MESH && m->mesh_polynum[m->geom_dataid[gi]] <= 0) {
       return 1e30;
     }
@@ -186,9 +187,9 @@ mjtNum mjc_GeomDist(const mjModel* m, int gi, const mjtNum* gpos, const mjtNum* 
         }
       }
       mju_copy3(nl, bestn);
-    } else if (type == mjGEOM_CYLINDER && mju_cylinderBottom(size) != size[0]) {
-      // conical frustum: penetration of round side measured normal to the slanted wall
-      mjtNum rt = size[0], rb = mju_cylinderBottom(size), h = size[1];
+    } else if (type == mjGEOM_CONE) {
+      // penetration of round side measured normal to the slanted wall
+      mjtNum rb = size[0], rt = size[2], h = size[1];
       mjtNum len = mju_sqrt(4*h*h + (rb - rt)*(rb - rt));
       mjtNum r = mju_sqrt(p[0] * p[0] + p[1] * p[1]);
       mjtNum pr = (0.5*(rt + rb) + 0.5*(rt - rb)/h*p[2] - r) * 2*h/len;

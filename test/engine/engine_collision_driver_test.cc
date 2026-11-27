@@ -2515,7 +2515,7 @@ TEST_F(MjCollisionTest, HFieldFlexCollisionAndPinnedSkip) {
   mj_forward(m_pin.get(), d_pin.get());
   EXPECT_EQ(d_pin->ncon, 0);
 }
-TEST_F(MjCollisionTest, PlaneFrustum) {
+TEST_F(MjCollisionTest, PlaneCone) {
   // cone standing on its base and cone lying on its side, both 1mm deep
   static constexpr char xml[] = R"(
   <mujoco>
@@ -2523,11 +2523,11 @@ TEST_F(MjCollisionTest, PlaneFrustum) {
       <geom name="plane" type="plane" size="10 10 .1"/>
       <body>
         <freejoint/>
-        <geom name="standing" type="cylinder" size="0 .5 .3" pos="0 0 .499"/>
+        <geom name="standing" type="cone" size=".3 .5" pos="0 0 .499"/>
       </body>
       <body>
         <freejoint/>
-        <geom name="lying" type="cylinder" size="0 .2"
+        <geom name="lying" type="cone" size="0 .2"
               fromto="0 3 -.001 0.98058068 3 0.19511614"/>
       </body>
     </worldbody>
@@ -2563,17 +2563,17 @@ TEST_F(MjCollisionTest, PlaneFrustum) {
   EXPECT_EQ(nlying, 2);
 }
 
-TEST_F(MjCollisionTest, FrustumDistance) {
+TEST_F(MjCollisionTest, ConeDistance) {
   // cone with apex at z = 0.5 and base of radius 0.5 at z = -0.5
   static constexpr char xml[] = R"(
   <mujoco>
     <worldbody>
-      <geom name="cone" type="cylinder" size="0 .5 .5"/>
+      <geom name="cone" type="cone" size=".5 .5"/>
       <body pos="0 0 10">
         <freejoint/>
         <geom name="sphere" type="sphere" size=".1"/>
         <geom name="box" type="box" size=".1 .1 .1" pos="0 0 2"/>
-        <geom name="frustum" type="cylinder" size=".1 .1 .2" pos="0 0 4"/>
+        <geom name="frustum" type="cone" size=".2 .1 .1" pos="0 0 4"/>
       </body>
     </worldbody>
   </mujoco>
@@ -2611,7 +2611,7 @@ TEST_F(MjCollisionTest, FrustumDistance) {
   EXPECT_NEAR(distance(3, 1, 0), 0.5 * s, tol);
 }
 
-TEST_F(MjCollisionTest, FrustumAtRest) {
+TEST_F(MjCollisionTest, ConeAtRest) {
   // frustum standing on a plane, and frustum lying on its side on a box
   static constexpr char xml[] = R"(
   <mujoco>
@@ -2620,11 +2620,11 @@ TEST_F(MjCollisionTest, FrustumAtRest) {
       <geom type="box" size="1 1 .1" pos="0 3 0"/>
       <body pos="0 0 .1">
         <freejoint/>
-        <geom type="cylinder" size=".05 .1 .1"/>
+        <geom type="cone" size=".1 .1 .05"/>
       </body>
       <body pos="0 3 .1">
         <freejoint/>
-        <geom type="cylinder" size=".05 .1"
+        <geom type="cone" size=".05 .1"
               fromto="-.1 0 .05 .1 0 .1"/>
       </body>
     </worldbody>

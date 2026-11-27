@@ -354,12 +354,13 @@ def mesh_config_generator(
             "height": size[2] * 2,
         },
     }
-  elif geom_type == mujoco.mjtGeom.mjGEOM_FRUSTUM:
+  elif geom_type == mujoco.mjtGeom.mjGEOM_CONE:
+    # scene geom size: radius at the bottom, radius at the top, half-height
     config = {
         "name": name,
         "cylinder": {
-            "radius": size[1],
-            "top_radius": size[0],
+            "radius": size[0],
+            "top_radius": size[1],
             "height": size[2] * 2,
         },
     }

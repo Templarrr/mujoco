@@ -268,19 +268,6 @@ static void setMaterial(const mjModel* m, mjvGeom* geom, int matid, const float*
 }
 
 
-// initialize geom from the type and size of a model geom: a cylinder whose radii at its two ends
-// differ is a conical frustum
-static void initModelGeom(mjvGeom* geom, int type, const mjtNum size[3],
-                          const mjtNum* pos, const mjtNum* mat, const float* rgba) {
-  if (type == mjGEOM_CYLINDER && mju_cylinderBottom(size) != size[0]) {
-    mjtNum fsize[3] = {size[0], mju_cylinderBottom(size), size[1]};
-    mjv_initGeom(geom, mjGEOM_FRUSTUM, fsize, pos, mat, rgba);
-  } else {
-    mjv_initGeom(geom, type, size, pos, mat, rgba);
-  }
-}
-
-
 // set (type, size, pos, mat) connector-type geom between given points
 //  assume that mjv_initGeom was already called to set all other properties
 void mjv_connector(mjvGeom* geom, int type, mjtNum width,
@@ -361,6 +348,13 @@ void mjv_initGeom(mjvGeom* geom, int type, const mjtNum* size,
     case mjGEOM_CYLINDER:
       geom->size[0] = (float)size[0];
       geom->size[1] = (float)size[0];
+      geom->size[2] = (float)size[1];
+      break;
+
+    case mjGEOM_CONE:
+      // radius at -z, radius at +z, half-height
+      geom->size[0] = (float)size[0];
+      geom->size[1] = (float)size[2];
       geom->size[2] = (float)size[1];
       break;
 
@@ -1145,7 +1139,7 @@ static void addGeomGeoms(const mjModel* m, mjData* d, const mjvOption* vopt,
     }
 
     // construct geom
-    initModelGeom(thisgeom, m->geom_type[i], m->geom_size+3*i,
+    mjv_initGeom(thisgeom, m->geom_type[i], m->geom_size+3*i,
                   d->geom_xpos+3*i, d->geom_xmat+9*i, NULL);
     thisgeom->dataid = m->geom_dataid[i];
 
@@ -2624,7 +2618,7 @@ static void addActuatorGeoms(const mjModel* m, mjData* d, const mjvOption* vopt,
           mju_scl3(sz, m->geom_size+3*k, 1.05);
 
           // make geom
-          initModelGeom(thisgeom,
+          mjv_initGeom(thisgeom,
                         m->geom_type[k], sz,
                         d->geom_xpos + 3*k,
                         d->geom_xmat + 9*k,

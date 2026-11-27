@@ -107,8 +107,9 @@ inline constexpr mjMap geomtype_map[] = {
   {"box",        mjGEOM_BOX},
   {"mesh",       mjGEOM_MESH},
   {"sdf",        mjGEOM_SDF},
+  {"cone",       mjGEOM_CONE},
 };
-inline constexpr int geomtype_sz = 9;
+inline constexpr int geomtype_sz = 10;
 
 // enum projection
 inline constexpr mjMap projection_map[] = {

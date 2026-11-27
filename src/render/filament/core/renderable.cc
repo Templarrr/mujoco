@@ -187,8 +187,8 @@ void Renderable::SetTransform(const float3& position, const mat3f& rotation) {
 
 void Renderable::SetSize(const float3& size) {
   trs_.size = size;
-  if (geom_type_ == mjGEOM_FRUSTUM && !parts_.empty()) {
-    UpdateFrustumMesh();
+  if (geom_type_ == mjGEOM_CONE && !parts_.empty()) {
+    UpdateConeMesh();
   }
   UpdateTransform();
 }
@@ -411,10 +411,10 @@ void Renderable::Prepare(std::span<const mjrfRenderRequest*> requests,
       }
     }
 
-    if (geom_type_ == mjGEOM_FRUSTUM) {
-      // Hide the end disk of a cone's apex.
-      draw_state.hidden_parts = (trs_.size.x <= 0 ? 0x02 : 0) |
-                                (trs_.size.y <= 0 ? 0x04 : 0);
+    if (geom_type_ == mjGEOM_CONE) {
+      // Hide the end disk at the apex of a cone.
+      draw_state.hidden_parts = (trs_.size.y <= 0 ? 0x02 : 0) |
+                                (trs_.size.x <= 0 ? 0x04 : 0);
     }
 
     const Mesh* mesh = !parts_.empty() ? parts_[0].mesh : nullptr;
@@ -597,17 +597,17 @@ void Renderable::ApplyPartGeometry(Part& part, bool wireframe) {
   }
 }
 
-const Mesh* Renderable::GetFrustumMesh() const {
+const Mesh* Renderable::GetConeMesh() const {
   Builtins* builtins = material_mgr_->GetObjectManager()->GetBuiltins();
-  return builtins->Frustum(Builtins::Stacks{frustum_nstack_},
-                           Builtins::Slices{frustum_nslice_}, trs_.size.x,
+  return builtins->Frustum(Builtins::Stacks{cone_nstack_},
+                           Builtins::Slices{cone_nslice_}, trs_.size.x,
                            trs_.size.y);
 }
 
-void Renderable::UpdateFrustumMesh() {
-  // The lateral surface of a frustum depends on the ratio of its radii, so
-  // swap in the matching mesh when the size changes it.
-  const Mesh* mesh = GetFrustumMesh();
+void Renderable::UpdateConeMesh() {
+  // The lateral surface of a cone depends on the ratio of its radii, so swap
+  // in the matching mesh when the size changes it.
+  const Mesh* mesh = GetConeMesh();
   Part& part = parts_[0];
   if (mesh != part.mesh) {
     part.mesh = mesh;
@@ -705,36 +705,35 @@ void Renderable::SetGeomMesh(mjtGeom type, int nstack, int nslice, int nquad) {
         }
       };
       break;
-    case mjGEOM_FRUSTUM:
-      // Conical frustums are a frustum-shaped tube with two disks at the ends.
-      // The size is (top radius, bottom radius, half-height).
-      frustum_nstack_ = nstack;
-      frustum_nslice_ = nslice;
-      AppendMesh(GetFrustumMesh());
+    case mjGEOM_CONE:
+      // Cones are a frustum-shaped tube with two disks at the ends. The size is
+      // (bottom radius, top radius, half-height).
+      cone_nstack_ = nstack;
+      cone_nslice_ = nslice;
+      AppendMesh(GetConeMesh());
       AppendMesh(builtins->Disk(num_slices, num_quads));
       AppendMesh(builtins->Disk(num_slices, num_quads));
 
       get_transform_fn_ = [](int index, const Trs& trs) {
-        const float top = trs.size.x;
-        const float bottom = trs.size.y;
+        const float bottom = trs.size.x;
+        const float top = trs.size.y;
         const float height = trs.size.z;
         mat4f base = mat4f(trs.rotation, trs.translation);
         if (index == 0) {
           const float radius = std::max(top, bottom);
           return base * mat4f::scaling(float3{radius, radius, height});
         } else if (index == 1) {
-          // Move the first disk to the top of the frustum.
+          // Move the first disk to the top of the cone.
           base *= mat4f::translation(float3{0, 0, height});
           return base * mat4f::scaling(float3{top, top, height});
         } else if (index == 2) {
-          // Move the second disk to the bottom of the frustum. Rotate the disk
-          // 180 degrees so that the normals point outwards.
+          // Move the second disk to the bottom of the cone. Rotate the disk 180
+          // degrees so that the normals point outwards.
           base *= mat4f::translation(float3{0, 0, -height});
           base *= mat4f::rotation(std::numbers::pi, float3{1, 0, 0});
           return base * mat4f::scaling(float3{bottom, bottom, height});
         } else {
-          mju_error("Invalid index for frustum geom: %d (expected [0,2])",
-                    index);
+          mju_error("Invalid index for cone geom: %d (expected [0,2])", index);
           return trs.ToTransform();
         }
       };

@@ -471,7 +471,7 @@ float mjv_rbound(const mjvGeom* geom) {
   case mjGEOM_CYLINDER:
     return sqrtf(s[0]*s[0] + s[2]*s[2]);
 
-  case mjGEOM_FRUSTUM: {
+  case mjGEOM_CONE: {
     float r = mjMAX(s[0], s[1]);
     return sqrtf(r*r + s[2]*s[2]);
   }

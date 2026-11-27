@@ -220,9 +220,15 @@ static int geomBound(const mjModel* m, int g, mjtNum aamm[6], mjtNum* rbound) {
     *rbound = size[0] + size[1];
     break;
 
-  case mjGEOM_CYLINDER: {
-    // conical frustum: the larger radius bounds both ends
-    mjtNum radius = mju_max(size[0], mju_cylinderBottom(size));
+  case mjGEOM_CYLINDER:
+    aamm[3] = aamm[4] = size[0];
+    aamm[5] = size[1];
+    *rbound = mju_sqrt(size[0]*size[0] + size[1]*size[1]);
+    break;
+
+  case mjGEOM_CONE: {
+    // the larger radius bounds both ends
+    mjtNum radius = mju_max(size[0], size[2]);
     aamm[3] = aamm[4] = radius;
     aamm[5] = size[1];
     *rbound = mju_sqrt(radius*radius + size[1]*size[1]);

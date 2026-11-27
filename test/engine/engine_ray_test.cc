@@ -1177,14 +1177,14 @@ TEST_F(RayTest, RayTreeRotatedAndBvActive) {
   EXPECT_TRUE(d->bvh_active[m->mesh_bvhadr[0]]);
 }
 
-TEST_F(RayTest, RayFrustum) {
+TEST_F(RayTest, RayCone) {
   // cone with apex at z = 0.5 and base of radius 0.5 at z = -0.5, and inverted
   // frustum with radius 0.5 at z = 0.5 and 0.25 at z = -0.5, at x = 10
   static constexpr char kXml[] = R"(
   <mujoco>
     <worldbody>
-      <geom name="cone" type="cylinder" size="0 0.5 0.5"/>
-      <geom name="frustum" type="cylinder" size="0.5 0.5 0.25" pos="10 0 0"/>
+      <geom name="cone" type="cone" size="0.5 0.5"/>
+      <geom name="frustum" type="cone" size="0.25 0.5 0.5" pos="10 0 0"/>
     </worldbody>
   </mujoco>
   )";

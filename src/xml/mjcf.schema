@@ -160,6 +160,7 @@ enum geomtype : mjtGeom {
   box         = mjGEOM_BOX
   mesh        = mjGEOM_MESH
   sdf         = mjGEOM_SDF
+  cone        = mjGEOM_CONE
 }
 
 enum projection : mjtProjection {

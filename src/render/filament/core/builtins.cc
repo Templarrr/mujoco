@@ -445,7 +445,7 @@ class TubeBuilder : public BuiltinBuilder {
 class FrustumBuilder : public BuiltinBuilder {
  public:
   // The radii are relative to the larger one, so max(top, bottom) == 1.
-  FrustumBuilder(Stacks nstack, Slices nslice, float top, float bottom) {
+  FrustumBuilder(Stacks nstack, Slices nslice, float bottom, float top) {
     const int num_stacks = static_cast<int>(nstack);
     const int num_slices = static_cast<int>(nslice);
 
@@ -941,8 +941,8 @@ const Mesh* Builtins::DomeBottom(Stacks nstack, Slices nslice) {
   return GetMesh(dome_bottoms_, key, build);
 }
 
-const Mesh* Builtins::Frustum(Stacks nstack, Slices nslice, float top,
-                              float bottom) {
+const Mesh* Builtins::Frustum(Stacks nstack, Slices nslice, float bottom,
+                              float top) {
   // Quantize the ratio of the smaller to the larger radius, and encode which
   // end is the smaller one in the flip bit of the key.
   static constexpr int kRatioSteps = 1024;
@@ -954,8 +954,8 @@ const Mesh* Builtins::Frustum(Stacks nstack, Slices nslice, float top,
   auto build = [=, this]() {
     const float small = static_cast<float>(steps) / kRatioSteps;
     return BuiltinBuilder::Create<FrustumBuilder>(
-        engine_, nstack, nslice, top_smaller ? small : 1.0f,
-        top_smaller ? 1.0f : small);
+        engine_, nstack, nslice, top_smaller ? 1.0f : small,
+        top_smaller ? small : 1.0f);
   };
   return GetMesh(frustums_, key, build);
 }

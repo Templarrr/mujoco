@@ -59,6 +59,8 @@ MJAPI int mjc_PlaneCapsule(const mjModel* m, mjData* d, mjPreContact* con, int g
                            mjtNum margin);
 MJAPI int mjc_PlaneCylinder(const mjModel* m, mjData* d, mjPreContact* con, int g1, int g2,
                             mjtNum margin);
+MJAPI int mjc_PlaneCone(const mjModel* m, mjData* d, mjPreContact* con, int g1, int g2,
+                        mjtNum margin);
 MJAPI int mjc_PlaneBox(const mjModel* m, mjData* d, mjPreContact* con, int g1, int g2,
                        mjtNum margin);
 
@@ -69,6 +71,8 @@ MJAPI int mjc_SphereCapsule(const mjModel* m, mjData* d, mjPreContact* con, int 
                             mjtNum margin);
 MJAPI int mjc_SphereCylinder(const mjModel* m, mjData* d, mjPreContact* con, int g1, int g2,
                              mjtNum margin);
+MJAPI int mjc_SphereCone(const mjModel* m, mjData* d, mjPreContact* con, int g1, int g2,
+                         mjtNum margin);
 MJAPI int mjc_CapsuleCapsule(const mjModel* m, mjData* d, mjPreContact* con, int g1, int g2,
                              mjtNum margin);
 

@@ -71,7 +71,7 @@ static int isBuiltinWithUV(int type) {
           type == mjGEOM_ARROW2 ||
           type == mjGEOM_TRIANGLE ||
           type == mjGEOM_DISC ||
-          type == mjGEOM_FRUSTUM);
+          type == mjGEOM_CONE);
 }
 
 
@@ -517,11 +517,11 @@ static void renderGeom(const mjvGeom* geom, int mode, const float* headpos,
     }
     break;
 
-  case mjGEOM_FRUSTUM:                        // conical frustum or cone
+  case mjGEOM_CONE:                           // cone or conical frustum
   {
     const int nslice = 64;
-    const float r_top = mjMAX(0.0f, size[0]);
-    const float r_bottom = mjMAX(0.0f, size[1]);
+    const float r_bottom = mjMAX(0.0f, size[0]);
+    const float r_top = mjMAX(0.0f, size[1]);
     const float h = size[2];
     if (h <= 0.0f || (r_top == 0.0f && r_bottom == 0.0f)) {
       break;

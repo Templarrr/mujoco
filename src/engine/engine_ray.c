@@ -437,10 +437,10 @@ static mjtNum ray_ellipsoid(const mjtNum pos[3], const mjtNum mat[9], const mjtN
 }
 
 
-// conical frustum: cylinder with radius size[0] at +z and mju_cylinderBottom(size) at -z
-static mjtNum ray_frustum(const mjtNum pos[3], const mjtNum mat[9], const mjtNum size[3],
-                          const mjtNum pnt[3], const mjtNum vec[3], mjtNum normal[3]) {
-  mjtNum radius[2] = {mju_cylinderBottom(size), size[0]};  // radius at bottom, top
+// cone or conical frustum: radius size[0] at -z, size[2] at +z
+static mjtNum ray_cone(const mjtNum pos[3], const mjtNum mat[9], const mjtNum size[3],
+                       const mjtNum pnt[3], const mjtNum vec[3], mjtNum normal[3]) {
+  mjtNum radius[2] = {size[0], size[2]};  // radius at bottom, top
   mjtNum rmax = mju_max(radius[0], radius[1]);
 
   // bounding sphere test
@@ -549,11 +549,6 @@ static mjtNum ray_frustum(const mjtNum pos[3], const mjtNum mat[9], const mjtNum
 // cylinder
 static mjtNum ray_cylinder(const mjtNum pos[3], const mjtNum mat[9], const mjtNum size[3],
                            const mjtNum pnt[3], const mjtNum vec[3], mjtNum normal[3]) {
-  // conical frustum
-  if (mju_cylinderBottom(size) != size[0]) {
-    return ray_frustum(pos, mat, size, pnt, vec, normal);
-  }
-
   // bounding sphere test
   mjtNum ssz = size[0]*size[0] + size[1]*size[1];
   if (ray_sphere(pos, NULL, ssz, pnt, vec, NULL) < 0) {
@@ -1155,6 +1150,9 @@ mjtNum mju_rayGeom(const mjtNum pos[3], const mjtNum mat[9], const mjtNum size[3
 
   case mjGEOM_CYLINDER:
     return ray_cylinder(pos, mat, size, pnt, vec, normal);
+
+  case mjGEOM_CONE:
+    return ray_cone(pos, mat, size, pnt, vec, normal);
 
   case mjGEOM_BOX:
     return ray_box(pos, mat, size, pnt, vec, NULL, normal);

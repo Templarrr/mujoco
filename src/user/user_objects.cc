@@ -194,19 +194,20 @@ static int SpecShape(double                quat[4],
   return type == mjGEOM_BOX || type == mjGEOM_ELLIPSOID ? mjGEOM_CYLINDER : type;
 }
 
-// radius of a cylinder at its -z end: size[2] if given, otherwise size[0]
-double CylinderBottom(const double size[3]) {
-  return size[2] > 0 ? size[2] : size[0];
-}
-
-// true if a cylinder is a conical frustum (or a cone): its radii at the two ends differ
-bool IsFrustum(int type, const double size[3]) {
-  return type == mjGEOM_CYLINDER && size[2] > 0 && size[2] != size[0];
+// a cone given by fromto takes its radii at the from and to points from the first two values of
+// its size: move them to size[2], the radius at +z (from), and size[0], the radius at -z (to)
+static void ConeFromto(int type, double size[3], const double fromto[6]) {
+  if (type == mjGEOM_CONE && mjuu_defined(fromto[0])) {
+    double rfrom = size[0], rto = size[1];
+    size[0]      = rto;
+    size[1]      = 0;
+    size[2]      = rfrom;
+  }
 }
 
 // integrals over the axis z in [-h, h] of a conical frustum with radius r(z) = a + b*z, used for
 // its volume, area and inertia: I[k] = integral of r^2*z^k for k = 0, 1, 2, I[3] = integral of r^4
-void FrustumVolumeIntegrals(double I[4], double a, double b, double h) {
+void ConeVolumeIntegrals(double I[4], double a, double b, double h) {
   double h3 = h * h * h, h5 = h3 * h * h;
   I[0] = 2 * h * a * a + 2 * h3 * b * b / 3;
   I[1] = 4 * a * b * h3 / 3;
@@ -216,7 +217,7 @@ void FrustumVolumeIntegrals(double I[4], double a, double b, double h) {
 
 // integrals over the axis z in [-h, h] of a conical frustum with radius r(z) = a + b*z, used for
 // its shell: J[k] = integral of r*z^k for k = 0, 1, 2, J[3] = integral of r^3
-void FrustumShellIntegrals(double J[4], double a, double b, double h) {
+void ConeShellIntegrals(double J[4], double a, double b, double h) {
   double h3 = h * h * h;
   J[0] = 2 * h * a;
   J[1] = 2 * b * h3 / 3;
@@ -224,16 +225,16 @@ void FrustumShellIntegrals(double J[4], double a, double b, double h) {
   J[3] = 2 * h * a * a * a + 2 * a * b * b * h3;
 }
 
-// mass properties of a conical frustum with radius rt at z = h and rb at z = -h, per unit mass:
-// center of mass on the axis, and moments of inertia about it (xx = yy, zz)
-void FrustumInertia(double* com, double inertia[2], double rt, double rb, double h, bool shell) {
+// mass properties of a cone or conical frustum with radius rb at z = -h and rt at z = h, per unit
+// mass: center of mass on the axis, and moments of inertia about it (xx = yy, zz)
+void ConeInertia(double* com, double inertia[2], double rb, double rt, double h, bool shell) {
   double a = (rt + rb) / 2;
   double b = (rt - rb) / (2 * h);
 
   // solid: slices of mass proportional to r^2
   if (!shell) {
     double I[4];
-    FrustumVolumeIntegrals(I, a, b, h);
+    ConeVolumeIntegrals(I, a, b, h);
     *com       = I[1] / I[0];
     inertia[0] = (I[3] / 4 + I[2]) / I[0] - (*com) * (*com);
     inertia[1] = I[3] / (2 * I[0]);
@@ -242,7 +243,7 @@ void FrustumInertia(double* com, double inertia[2], double rt, double rb, double
 
   // shell: lateral surface, of area 2*pi*sqrt(1+b^2)*r*dz per slice, and the two disks
   double J[4];
-  FrustumShellIntegrals(J, a, b, h);
+  ConeShellIntegrals(J, a, b, h);
   double k     = 2 * mjPI * std::sqrt(1 + b * b);
   double mt    = mjPI * rt * rt;
   double mb    = mjPI * rb * rb;
@@ -284,13 +285,14 @@ static void checksize(double* size, mjtGeom type, mjCBase* object, const char* n
     if (size[2] <= 0) { throw mjCError(object, "plane size(3) must be positive"); }
   }
 
-  // cylinder geom: size[2] is the optional radius at the -z end, one of the radii can be 0 (cone)
-  else if (type == mjGEOM_CYLINDER && object->elemtype == mjOBJ_GEOM) {
-    if (size[0] < 0 || (size[0] == 0 && size[2] <= 0)) {
-      throw mjCError(object, "size 0 must be positive in geom");
+  // cone: radius size[0] at -z and size[2] at +z, one of which can be 0
+  else if (type == mjGEOM_CONE) {
+    if (size[0] < 0) { throw mjCError(object, "size 0 must be non-negative in cone"); }
+    if (size[1] <= 0) { throw mjCError(object, "size 1 must be positive in cone"); }
+    if (size[2] < 0) { throw mjCError(object, "size 2 must be non-negative in cone"); }
+    if (size[0] == 0 && size[2] == 0) {
+      throw mjCError(object, "size 0 or size 2 must be positive in cone");
     }
-    if (size[1] <= 0) { throw mjCError(object, "size 1 must be positive in geom"); }
-    if (size[2] < 0) { throw mjCError(object, "size 2 must be non-negative in geom"); }
   }
 
   // regular geom
@@ -1873,7 +1875,6 @@ bool mjCGauge::Aligned(const double dir[3]) const {
 // sphere sites take the mean factor
 const char* mjCGauge::Size(double size[3], int type, const double quat[4], bool site) const {
   int n = type >= 0 && type < mjNGEOMTYPES ? mjGEOMINFO[type] : 3;
-  if (type == mjGEOM_CYLINDER && !site) { n = 3; }  // size[2]: optional radius at the -z end
   if (uniform) {
     for (int i = 0; i < n; i++) { size[i] *= shape; }
     return nullptr;
@@ -1909,6 +1910,7 @@ const char* mjCGauge::Size(double size[3], int type, const double quat[4], bool 
 
     case mjGEOM_CAPSULE:
     case mjGEOM_CYLINDER:
+    case mjGEOM_CONE:
       if (!site && !aligned[2]) {
         return "the axis of this shape is not aligned with the axes of the scale";
       }
@@ -1917,7 +1919,7 @@ const char* mjCGauge::Size(double size[3], int type, const double quat[4], bool 
       }
       size[0] *= std::sqrt(f[0] * f[1]);
       size[1] *= f[2];
-      if (type == mjGEOM_CYLINDER && !site) { size[2] *= std::sqrt(f[0] * f[1]); }
+      if (type == mjGEOM_CONE) { size[2] *= std::sqrt(f[0] * f[1]); }
       return nullptr;
 
     case mjGEOM_PLANE:
@@ -4349,26 +4351,24 @@ double mjCGeom::GetVolume() const {
     case mjGEOM_CYLINDER: {
       double height = 2 * size[1];
       double radius = size[0];
-
-      // conical frustum: radius size[0] at +z, CylinderBottom(size) at -z
-      if (IsFrustum(type, size)) {
-        double rt = size[0], rb = CylinderBottom(size);
-        switch (typeinertia) {
-          case mjINERTIA_VOLUME:
-            return mjPI * height * (rt * rt + rt * rb + rb * rb) / 3;
-          case mjINERTIA_SHELL: {
-            double slant = std::sqrt((rt - rb) * (rt - rb) + height * height);
-            return mjPI * (rt * rt + rb * rb) + mjPI * (rt + rb) * slant;
-          }
-        }
-        break;
-      }
-
       switch (typeinertia) {
         case mjINERTIA_VOLUME:
           return mjPI * radius * radius * height;
         case mjINERTIA_SHELL:
           return 2 * mjPI * radius * radius + 2 * mjPI * radius * height;
+      }
+      break;
+    }
+    case mjGEOM_CONE: {
+      double height = 2 * size[1];
+      double rb = size[0], rt = size[2];
+      switch (typeinertia) {
+        case mjINERTIA_VOLUME:
+          return mjPI * height * (rt * rt + rt * rb + rb * rb) / 3;
+        case mjINERTIA_SHELL: {
+          double slant = std::sqrt((rt - rb) * (rt - rb) + height * height);
+          return mjPI * (rt * rt + rb * rb) + mjPI * (rt + rb) * slant;
+        }
       }
       break;
     }
@@ -4405,14 +4405,13 @@ double mjCGeom::GetVolume() const {
 }
 
 
-// center of mass of the geom in the frame of its body: the geom position, except for a conical
-// frustum whose center of mass is offset along its axis
+// center of mass of the geom in the frame of its body: the geom position, except for a cone whose
+// center of mass is offset along its axis
 void mjCGeom::GetCenterOfMass(double com[3]) const {
   mjuu_copyvec(com, pos, 3);
-  if (IsFrustum(type, size)) {
+  if (type == mjGEOM_CONE) {
     double offset, inert[2], axis[3];
-    FrustumInertia(&offset, inert, size[0], CylinderBottom(size), size[1],
-                   typeinertia == mjINERTIA_SHELL);
+    ConeInertia(&offset, inert, size[0], size[2], size[1], typeinertia == mjINERTIA_SHELL);
     double z[3] = {0, 0, offset};
     mjuu_rotVecQuat(axis, z, quat);
     mjuu_addtovec(com, axis, 3);
@@ -4496,21 +4495,18 @@ void mjCGeom::SetInertia(void) {
       }
       break;
     }
+    case mjGEOM_CONE: {
+      // inertia about the center of mass, which is offset along the axis
+      double com, inert[2];
+      ConeInertia(&com, inert, size[0], size[2], size[1], typeinertia == mjINERTIA_SHELL);
+      inertia[0] = inertia[1] = mass_ * inert[0];
+      inertia[2]              = mass_ * inert[1];
+      return;
+    }
     case mjGEOM_CYLINDER: {
       double halfheight = size[1];
       double height     = 2 * halfheight;
       double radius     = size[0];
-
-      // conical frustum: inertia about its center of mass, which is offset along the axis
-      if (IsFrustum(type, size)) {
-        double com, inert[2];
-        FrustumInertia(&com, inert, size[0], CylinderBottom(size), halfheight,
-                       typeinertia == mjINERTIA_SHELL);
-        inertia[0] = inertia[1] = mass_ * inert[0];
-        inertia[2]              = mass_ * inert[1];
-        return;
-      }
-
       switch (typeinertia) {
         case mjINERTIA_VOLUME:
 
@@ -4689,7 +4685,13 @@ void mjCGeom::ComputeAABB(void) {
       break;
 
     case mjGEOM_CYLINDER:
-      aamm[3] = aamm[4] = std::max(size[0], CylinderBottom(size));
+      aamm[3] = aamm[4] = size[0];
+      aamm[5]           = size[1];
+      mjuu_setvec(aamm, -aamm[3], -aamm[4], -aamm[5]);
+      break;
+
+    case mjGEOM_CONE:
+      aamm[3] = aamm[4] = std::max(size[0], size[2]);
       aamm[5]           = size[1];
       mjuu_setvec(aamm, -aamm[3], -aamm[4], -aamm[5]);
       break;
@@ -4777,6 +4779,7 @@ void mjCGeom::ApplyGauge(bool inverse) {
 // compiler
 void mjCGeom::Compile(void) {
   CopyFromSpec();
+  ConeFromto(type, size, fromto);
   ApplyGauge();
 
   // resize userdata
@@ -4821,9 +4824,10 @@ void mjCGeom::Compile(void) {
     // check type
     if (type != mjGEOM_CAPSULE &&
         type != mjGEOM_CYLINDER &&
+        type != mjGEOM_CONE &&
         type != mjGEOM_ELLIPSOID &&
         type != mjGEOM_BOX) {
-      throw mjCError(this, "fromto requires capsule, cylinder, box or ellipsoid in geom");
+      throw mjCError(this, "fromto requires capsule, cylinder, cone, box or ellipsoid in geom");
     }
 
     // make sure pos is not defined; cannot use mjuu_defined because default is (0,0,0)
@@ -5022,16 +5026,22 @@ void mjCGeom::ShapeToSpec(bool newsize, bool position, bool orientation, bool ne
   SpecShape(specquat, type, spec.fromto, spec.quat, spec.alt, compiler);
   g.Inverse().Size(specsize, type, specquat);
 
-  // fromto does not give the radius of a capsule or cylinder: a new one leaves fromto as it is
-  if (span && !newpose && (type == mjGEOM_CAPSULE || type == mjGEOM_CYLINDER)) {
+  // fromto does not give the radii of a capsule, cylinder or cone: new ones leave fromto as it is
+  if (span && !newpose &&
+      (type == mjGEOM_CAPSULE || type == mjGEOM_CYLINDER || type == mjGEOM_CONE)) {
     double ends[6];
     mjuu_copyvec(ends, spec.fromto, 6);
     g.Point(ends);
     g.Point(ends + 3);
     double vec[3] = {ends[0] - ends[3], ends[1] - ends[4], ends[2] - ends[5]};
     if (size[1] == mjuu_normvec(vec, 3) / 2) {
-      spec.size[0] = specsize[0];
-      if (type == mjGEOM_CYLINDER) { spec.size[2] = specsize[2]; }
+      if (type == mjGEOM_CONE) {
+        // the radii at the from and to points
+        spec.size[0] = specsize[2];
+        spec.size[1] = specsize[0];
+      } else {
+        spec.size[0] = specsize[0];
+      }
       newsize = false;
     }
   }
@@ -5190,6 +5200,7 @@ void mjCSite::ApplyGauge(bool inverse) {
 // compiler
 void mjCSite::Compile(void) {
   CopyFromSpec();
+  ConeFromto(type, size, fromto);
   ApplyGauge();
 
   // resize userdata
@@ -5219,9 +5230,10 @@ void mjCSite::Compile(void) {
     // check type
     if (type != mjGEOM_CAPSULE &&
         type != mjGEOM_CYLINDER &&
+        type != mjGEOM_CONE &&
         type != mjGEOM_ELLIPSOID &&
         type != mjGEOM_BOX) {
-      throw mjCError(this, "fromto requires capsule, cylinder, box or ellipsoid in site");
+      throw mjCError(this, "fromto requires capsule, cylinder, cone, box or ellipsoid in site");
     }
 
     // make sure pos is not defined; cannot use mjuu_defined because default is (0,0,0)
@@ -5302,16 +5314,23 @@ void mjCSite::ShapeToSpec(bool newsize, bool position, bool orientation) {
   g.Size(f, type, specquat, /*site=*/true);
   for (int i = 0; i < 3; i++) { specsize[i] = size[i] / f[i]; }
 
-  // fromto does not give the radius of a capsule or cylinder: a new one leaves fromto as it is
-  if (span && !newpose && (type == mjGEOM_CAPSULE || type == mjGEOM_CYLINDER)) {
+  // fromto does not give the radii of a capsule, cylinder or cone: new ones leave fromto as it is
+  if (span && !newpose &&
+      (type == mjGEOM_CAPSULE || type == mjGEOM_CYLINDER || type == mjGEOM_CONE)) {
     double ends[6];
     mjuu_copyvec(ends, spec.fromto, 6);
     g.Point(ends);
     g.Point(ends + 3);
     double vec[3] = {ends[0] - ends[3], ends[1] - ends[4], ends[2] - ends[5]};
     if (size[1] == mjuu_normvec(vec, 3) / 2) {
-      spec.size[0] = specsize[0];
-      newsize      = false;
+      if (type == mjGEOM_CONE) {
+        // the radii at the from and to points
+        spec.size[0] = specsize[2];
+        spec.size[1] = specsize[0];
+      } else {
+        spec.size[0] = specsize[0];
+      }
+      newsize = false;
     }
   }
 
@@ -8180,14 +8199,6 @@ void mjCWrap::ResolveReferences(const mjCModel* m) {
 
       // set/check geom type, as authored: the geom may not have been compiled
       if (((mjCGeom*)obj)->spec.type == mjGEOM_CYLINDER) {
-        if (IsFrustum(mjGEOM_CYLINDER, ((mjCGeom*)obj)->spec.size)) {
-          throw mjCError(this,
-                         "geom '%s' in tendon %d, wrap %d is a conical frustum, which cannot be "
-                         "wrapped",
-                         name.c_str(),
-                         tendon->id,
-                         id);
-        }
         spec.type = mjWRAP_CYLINDER;
       } else if (((mjCGeom*)obj)->spec.type == mjGEOM_SPHERE) {
         spec.type = mjWRAP_SPHERE;

@@ -382,7 +382,13 @@ void mjXWriter::WriteSpecShape(XMLElement*    elem,
         double vec[3] = {shape.fromto[0] - shape.fromto[3],
                          shape.fromto[1] - shape.fromto[4],
                          shape.fromto[2] - shape.fromto[5]};
+        double r_to   = size[1];
         size[1]       = mjuu_normvec(vec, 3) / 2;
+        if (shape.type == mjGEOM_CONE) {
+          // +Z points towards "from": the -Z radius is the one at "to"
+          size[2] = size[0];
+          size[0] = r_to;
+        }
         if (shape.type == mjGEOM_ELLIPSOID || shape.type == mjGEOM_BOX) {
           size[2] = size[1];
           size[1] = size[0];
@@ -1077,9 +1083,9 @@ void mjXWriter::OneGeom(XMLElement* elem, const mjCGeom* geom, mjCDef* def, stri
     WriteAttrTxt(elem, "name", geom->name);
     if (classname != geom->classname) { WriteAttrTxt(elem, "class", geom->classname); }
     if (mjGEOMINFO[geom->type]) {
-      // cylinder: size[2] is the radius at the -z end, written if given
+      // a cone with its apex at +z is written with two values
       int nsize = mjGEOMINFO[geom->type];
-      if (geom->type == mjGEOM_CYLINDER && geom->size[2] > 0) { nsize = 3; }
+      if (geom->type == mjGEOM_CONE && geom->size[2] == 0) { nsize = 2; }
       WriteAttr(elem, "size", nsize, geom->size, def->Geom().size);
     }
     // the mass which the geom takes from its class if none is written

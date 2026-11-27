@@ -827,29 +827,6 @@ void mjXReader::OneJoint(XMLElement* elem, mjsJoint* joint) {
 }
 
 
-// a cylinder given by fromto takes its radii at the from and to ends from the first two values
-// of size: move the second one to size[2]; a cone with its apex at the to end is reversed, since
-// only the radius size[0] at the from end can be 0
-static void FromtoRadii(XMLElement* elem, int type, double size[3], double fromto[6]) {
-  if (type != mjGEOM_CYLINDER || !mjuu_defined(fromto[0])) {
-    return;
-  }
-  auto values = mjXUtil::ReadAttrVec<double>(elem, "size");
-  if (!values || values->size() != 2) {
-    return;
-  }
-  size[2] = size[1];
-  size[1] = 0;
-  if (size[2] == 0) {
-    size[2] = size[0];
-    size[0] = 0;
-    for (int i=0; i < 3; i++) {
-      std::swap(fromto[i], fromto[i+3]);
-    }
-  }
-}
-
-
 // geom element parser
 void mjXReader::OneGeom(XMLElement* elem, mjsGeom* geom) {
   string text;
@@ -857,7 +834,6 @@ void mjXReader::OneGeom(XMLElement* elem, mjsGeom* geom) {
 
   // mechanical attributes
   ReadAttrTable(elem, geom, geom->element, kGeomAttrs, kGeomAttrsN);
-  FromtoRadii(elem, geom->type, geom->size, geom->fromto);
 
   // fluid interaction model: keyword lowers to on/off
   if (MapValue(elem, "fluidshape", &n, fluidshape_map, 2)) { geom->fluid_ellipsoid = (n == 1); }
@@ -881,6 +857,18 @@ void mjXReader::OneSite(XMLElement* elem, mjsSite* site) {
 
   // mechanical attributes
   ReadAttrTable(elem, site, site->element, kSiteAttrs, kSiteAttrsN);
+
+  // cone: a radius which is not given is 0, not the default size of sites; with fromto, the
+  // radii at the from and to points are the first two values
+  if (site->type == mjGEOM_CONE) {
+    auto size = ReadAttrVec<double>(elem, "size");
+    int n = size ? size->size() : 3;
+    if (mjuu_defined(site->fromto[0])) {
+      if (n < 2) { site->size[1] = 0; }
+    } else if (n < 3) {
+      site->size[2] = 0;
+    }
+  }
 
   // orientation alternatives
   ReadQuat(elem, "quat", site->quat, text);

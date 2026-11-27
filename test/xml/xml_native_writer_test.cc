@@ -222,14 +222,15 @@ TEST_F(XMLWriterTest, SavesInertial) {
   EXPECT_THAT(saved_xml, HasSubstr("mass=\"1\""));
 }
 
-TEST_F(XMLWriterTest, SavesFrustum) {
+TEST_F(XMLWriterTest, SavesCone) {
   static constexpr char xml[] = R"(
   <mujoco>
     <worldbody>
       <body>
-        <geom type="cylinder" size=".1 .2 .05"/>
+        <geom type="cone" size=".1 .2 .05"/>
+        <geom type="cone" size=".1 .2"/>
+        <geom type="cone" size=".05" fromto="0 0 0 0 0 1"/>
         <geom type="cylinder" size=".1 .2"/>
-        <geom type="cylinder" size=".05 0" fromto="0 0 0 0 0 1"/>
       </body>
     </worldbody>
   </mujoco>
@@ -237,8 +238,9 @@ TEST_F(XMLWriterTest, SavesFrustum) {
   MjModelPtr model = LoadModelFromString(xml);
   ASSERT_THAT(model, NotNull());
   std::string saved_xml = SaveAndReadXml(model.get());
-  EXPECT_THAT(saved_xml, HasSubstr("size=\"0.1 0.2 0.05\""));
-  EXPECT_THAT(saved_xml, HasSubstr("size=\"0.1 0.2\""));
+  EXPECT_THAT(saved_xml, HasSubstr("size=\"0.1 0.2 0.05\" type=\"cone\""));
+  EXPECT_THAT(saved_xml, HasSubstr("size=\"0.1 0.2\" type=\"cone\""));
+  EXPECT_THAT(saved_xml, HasSubstr("size=\"0.1 0.2\" type=\"cylinder\""));
 
   // the saved model compiles to the same sizes, poses and inertia
   MjModelPtr saved = LoadModelFromString(saved_xml);

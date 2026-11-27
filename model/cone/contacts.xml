@@ -1,4 +1,4 @@
-<mujoco model="frustum contacts">
+<mujoco model="cone contacts">
   <visual>
     <global offwidth="1200" offheight="600"/>
     <quality shadowsize="4096" offsamples="8"/>
@@ -21,32 +21,32 @@
     <geom type="plane" size="3 3 .1" material="grid"/>
     <geom type="box" size=".35 .35 .05" pos=".5 0 .05" material="box"/>
 
-    <!-- frustum standing on the plane (analytic plane : cylinder) -->
+    <!-- frustum standing on the plane (analytic plane : cone) -->
     <body pos="-.45 0 .15">
       <freejoint/>
-      <geom type="cylinder" size=".06 .15 .14" material="orange"/>
+      <geom type="cone" size=".14 .15 .06" material="orange"/>
     </body>
 
-    <!-- cone lying on its side on the plane (analytic plane : cylinder) -->
+    <!-- cone lying on its side on the plane (analytic plane : cone) -->
     <body pos="-.1 .1 0">
       <freejoint/>
-      <geom type="cylinder" size="0 .12" fromto="0 -.3 0 0 0.288 .1176" material="green"/>
+      <geom type="cone" size="0 .12" fromto="0 -.3 0 0 0.288 .1176" material="green"/>
     </body>
 
     <!-- frustum lying on its side on a box (convex collider, multiple contacts) -->
     <body pos=".5 0 .1">
       <freejoint/>
-      <geom type="cylinder" size=".05 .1" fromto="-.2 0 .05 .2 0 .1" material="blue"/>
+      <geom type="cone" size=".05 .1" fromto="-.2 0 .05 .2 0 .1" material="blue"/>
     </body>
 
     <!-- cone standing on its base on a frustum standing on the box -->
     <body pos=".5 .2 .15">
       <freejoint/>
-      <geom type="cylinder" size=".04 .05 .08" material="orange"/>
+      <geom type="cone" size=".08 .05 .04" material="orange"/>
     </body>
     <body pos=".5 .2 .28">
       <freejoint/>
-      <geom type="cylinder" size="0 .08 .04" material="green"/>
+      <geom type="cone" size=".04 .08" material="green"/>
     </body>
   </worldbody>
 </mujoco>

@@ -421,12 +421,12 @@ TEST_F(SdfTest, PrimitiveGradientAndDistanceSingularities) {
   EXPECT_MJTNUM_EQ(gradient[2], 0.0);
 }
 
-TEST_F(SdfTest, FrustumDistanceAndGradient) {
+TEST_F(SdfTest, ConeDistanceAndGradient) {
   // cone with apex at z = 0.5 and base of radius 0.5 at z = -0.5
   static constexpr char kConeXml[] = R"(
   <mujoco>
     <worldbody>
-      <geom type="cylinder" size="0 0.5 0.5"/>
+      <geom type="cone" size="0.5 0.5"/>
     </worldbody>
   </mujoco>
   )";
@@ -439,7 +439,7 @@ TEST_F(SdfTest, FrustumDistanceAndGradient) {
   mjSDF sdf{};
   const mjpPlugin* null_plugin = nullptr;
   int id = 0;
-  mjtGeom type = mjGEOM_CYLINDER;
+  mjtGeom type = mjGEOM_CONE;
   sdf.plugin = &null_plugin;
   sdf.type = mjSDFTYPE_SINGLE;
   sdf.id = &id;

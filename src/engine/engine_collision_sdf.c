@@ -223,11 +223,11 @@ static void radialField3d(mjtNum field[3], const mjtNum a[3], const mjtNum x[3],
   if (x[2] < 0) field[2] = -field[2];
 }
 
-// signed distance and its gradient (if not NULL) of a conical frustum with radius size[0] at
-// z = size[1] and mju_cylinderBottom(size) at z = -size[1]; the problem is solved in the half-plane
-// (rho, z) containing x and the axis, where the frustum is a trapezoid
-static mjtNum frustumDistance(mjtNum gradient[3], const mjtNum x[3], const mjtNum size[3]) {
-  mjtNum rt = size[0], rb = mju_cylinderBottom(size), h = size[1];
+// signed distance and its gradient (if not NULL) of a cone with radius size[0] at z = -size[1] and
+// size[2] at z = size[1]; the problem is solved in the half-plane (rho, z) containing x and the
+// axis, where the cone is a trapezoid
+static mjtNum coneDistance(mjtNum gradient[3], const mjtNum x[3], const mjtNum size[3]) {
+  mjtNum rb = size[0], rt = size[2], h = size[1];
 
   // point in the half-plane, radial unit vector u
   mjtNum rho = mju_sqrt(x[0]*x[0] + x[1]*x[1]);
@@ -351,10 +351,10 @@ static mjtNum geomDistance(const mjModel* m, const mjData* d, const mjpPlugin* p
     }
     return k0 * (k0 - 1.0) / k1;
 
+  case mjGEOM_CONE:
+    return coneDistance(NULL, x, size);
+
   case mjGEOM_CYLINDER:
-    if (mju_cylinderBottom(size) != size[0]) {
-      return frustumDistance(NULL, x, size);
-    }
     a[0] = mju_sqrt(x[0]*x[0]+x[1]*x[1]) - size[0];
     a[1] = mju_abs(x[2]) - size[1];
     b[0] = mju_max(a[0], 0);
@@ -473,11 +473,11 @@ static void geomGradient(mjtNum gradient[3], const mjModel* m, const mjData* d,
     }
     break;
 
+  case mjGEOM_CONE:
+    coneDistance(gradient, x, size);
+    break;
+
   case mjGEOM_CYLINDER:
-    if (mju_cylinderBottom(size) != size[0]) {
-      frustumDistance(gradient, x, size);
-      break;
-    }
     c = mju_sqrt(x[0]*x[0]+x[1]*x[1]);
     e = mju_abs(x[2]);
     a[0] = c - size[0];
@@ -1495,4 +1495,16 @@ int mjc_FlexSDF(const mjModel* m, const mjData* d, mjPreContact* con, int* elem,
   }
 
   return cnt;
+}
+
+
+// collision between a signed distance field and a cone: the cone, whose type comes after that of
+// the SDF, is the first geom given to mjc_SDF, and the contact normals are reversed
+int mjc_SDFCone(const mjModel* m, mjData* d, mjPreContact* con, int g1, int g2, mjtNum margin) {
+  int ncon = mjc_SDF(m, d, con, g2, g1, margin);
+  for (int i=0; i < ncon; i++) {
+    mju_scl3(con[i].normal, con[i].normal, -1);
+    mju_scl3(con[i].tangent, con[i].tangent, -1);
+  }
+  return ncon;
 }

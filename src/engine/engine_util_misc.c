@@ -456,8 +456,14 @@ void mju_geomSemiAxes(mjtNum semiaxes[3], const mjtNum size[3], mjtGeom type) {
     break;
 
   case mjGEOM_CYLINDER:
-    // conical frustum: use the mean radius
-    semiaxes[0] = 0.5*(size[0] + mju_cylinderBottom(size));
+    semiaxes[0] = size[0];
+    semiaxes[1] = size[0];
+    semiaxes[2] = size[1];
+    break;
+
+  case mjGEOM_CONE:
+    // mean of the radii at the two ends
+    semiaxes[0] = 0.5*(size[0] + size[2]);
     semiaxes[1] = semiaxes[0];
     semiaxes[2] = size[1];
     break;
@@ -503,6 +509,13 @@ int mju_insidePrimitive(const mjtNum pos[3], const mjtNum mat[9], const mjtNum s
   case mjGEOM_CYLINDER:
     return (mju_abs(plocal[2]) < size[1] &&
             plocal[0]*plocal[0] + plocal[1]*plocal[1] < size[0]*size[0]);
+
+  case mjGEOM_CONE: {
+    // radius at the height of the point: size[0] at -z, size[2] at +z
+    mjtNum r = size[0] + (size[2] - size[0]) * (plocal[2] + size[1]) / (2*size[1]);
+    return (mju_abs(plocal[2]) < size[1] &&
+            plocal[0]*plocal[0] + plocal[1]*plocal[1] < r*r);
+  }
 
   case mjGEOM_BOX:
     return (mju_abs(plocal[0]) < size[0] &&

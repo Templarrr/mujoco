@@ -336,9 +336,10 @@ class App {
       geom = new THREE.CylinderGeometry(
           size[0], size[1], 2 * size[2], 32);
       geom.rotateX(0.5 * Math.PI);
-    } else if (geomType === mujoco.mjtGeom.mjGEOM_FRUSTUM.value) {
+    } else if (geomType === mujoco.mjtGeom.mjGEOM_CONE.value) {
+      // size: radius at the bottom, radius at the top, half-height
       geom = new THREE.CylinderGeometry(
-          size[0], size[1], 2 * size[2], 32);
+          size[1], size[0], 2 * size[2], 32);
       geom.rotateX(0.5 * Math.PI);
     } else if (geomType === mujoco.mjtGeom.mjGEOM_ELLIPSOID.value) {
       geom = new THREE.SphereGeometry(1);

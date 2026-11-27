@@ -196,8 +196,8 @@ class Renderable : public mjrfRenderable {
   void ApplyReceiveShadows(bool receive_shadow);
   void SetWireframe(bool wireframe);
   void ApplyPartGeometry(Part& part, bool wireframe);
-  const Mesh* GetFrustumMesh() const;
-  void UpdateFrustumMesh();
+  const Mesh* GetConeMesh() const;
+  void UpdateConeMesh();
 
   std::uint8_t GetPartLayerMask(int index) const;
 
@@ -206,9 +206,9 @@ class Renderable : public mjrfRenderable {
   MaterialManager* material_mgr_;
   mjrfRenderableParams params_;
   mjtGeom geom_type_ = mjGEOM_NONE;
-  // The tessellation of a frustum, whose lateral mesh depends on its size.
-  int frustum_nstack_ = 0;
-  int frustum_nslice_ = 0;
+  // The tessellation of a cone, whose lateral mesh depends on its size.
+  int cone_nstack_ = 0;
+  int cone_nslice_ = 0;
   mjrfMaterial material_;
   std::deque<DrawState> draw_queue_;
   DrawState curr_state_;

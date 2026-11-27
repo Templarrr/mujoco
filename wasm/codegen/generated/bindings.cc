@@ -4162,6 +4162,7 @@ EMSCRIPTEN_BINDINGS(mujoco_bindings) {
     .value("mjGEOM_BOX", mjGEOM_BOX)
     .value("mjGEOM_MESH", mjGEOM_MESH)
     .value("mjGEOM_SDF", mjGEOM_SDF)
+    .value("mjGEOM_CONE", mjGEOM_CONE)
     .value("mjNGEOMTYPES", mjNGEOMTYPES)
     .value("mjGEOM_ARROW", mjGEOM_ARROW)
     .value("mjGEOM_ARROW1", mjGEOM_ARROW1)
@@ -4173,7 +4174,6 @@ EMSCRIPTEN_BINDINGS(mujoco_bindings) {
     .value("mjGEOM_LABEL", mjGEOM_LABEL)
     .value("mjGEOM_TRIANGLE", mjGEOM_TRIANGLE)
     .value("mjGEOM_DISC", mjGEOM_DISC)
-    .value("mjGEOM_FRUSTUM", mjGEOM_FRUSTUM)
     .value("mjGEOM_NONE", mjGEOM_NONE);
   enum_<mjtGeomInertia>("mjtGeomInertia")
     .value("mjINERTIA_VOLUME", mjINERTIA_VOLUME)

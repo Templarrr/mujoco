@@ -1474,6 +1474,9 @@ class ModelWriter {
       case mjGEOM_CYLINDER:
         site_spec = WriteCylinder(name, size, body_path);
         break;
+      case mjGEOM_CONE:
+        site_spec = WriteCone(name, size, body_path);
+        break;
       case mjGEOM_ELLIPSOID:
         site_spec = WriteEllipsoid(name, size, body_path);
         break;
@@ -1573,14 +1576,116 @@ class ModelWriter {
 
     int geom_idx = mjs_getId(geom->element);
     mjtNum *geom_size = &model_->geom_size[geom_idx * 3];
-
-    // TODO: export a conical frustum (size[2] > 0 and differs from size[0])
-    // with its own radii; UsdGeomCylinder has a single radius
-    if (geom_size[2] > 0 && geom_size[2] != geom_size[0]) {
-      TF_WARN(UnsupportedGeomTypeError,
-              "Conical frustum geom %d is exported as a cylinder", geom_idx);
-    }
     return WriteCylinder(name, geom_size, body_path);
+  }
+
+  // A cone with its apex at +z is written as a UsdGeomCone, whose apex points
+  // along its +z axis. USD has no conical frustum and no cone with its apex at
+  // -z, so other cones are written as a mesh which approximates them.
+  pxr::SdfPrimSpecHandle WriteCone(const pxr::TfToken name, const mjtNum *size,
+                                   const pxr::SdfPath &body_path) {
+    // size: radius at -z, half-height, radius at +z
+    if (size[0] > 0 && size[2] == 0) {
+      auto cone_spec =
+          CreatePrimSpec(layer_, body_path, name, pxr::UsdGeomTokens->Cone);
+
+      auto radius_attr_spec =
+          CreateAttributeSpec(layer_, cone_spec, pxr::UsdGeomTokens->radius,
+                              pxr::SdfValueTypeNames->Double);
+      SetAttributeDefault(layer_, radius_attr_spec, (double)size[0]);
+
+      auto height_attr_spec =
+          CreateAttributeSpec(layer_, cone_spec, pxr::UsdGeomTokens->height,
+                              pxr::SdfValueTypeNames->Double);
+      // MuJoCo uses half sizes.
+      SetAttributeDefault(layer_, height_attr_spec, (double)(size[1] * 2));
+      return cone_spec;
+    }
+
+    TF_WARN(UnsupportedGeomTypeError,
+            "USD has no conical frustum or cone with its apex at -z: '%s' is "
+            "written as a mesh which approximates it",
+            name.GetText());
+
+    // rings of vertices at the bottom and top; a ring of radius 0 is the apex
+    constexpr int kSlices = 32;
+    const double radius[2] = {size[0], size[2]};
+    const double z[2] = {-size[1], size[1]};
+    pxr::VtArray<pxr::GfVec3f> points;
+    int ring[2];
+    for (int i = 0; i < 2; ++i) {
+      ring[i] = points.size();
+      int n = radius[i] > 0 ? kSlices : 1;
+      for (int j = 0; j < n; ++j) {
+        double angle = 2 * mjPI * j / kSlices;
+        points.emplace_back(radius[i] * std::cos(angle),
+                            radius[i] * std::sin(angle), z[i]);
+      }
+    }
+
+    // vertex index on a ring, which is the apex if the ring has one vertex
+    auto vertex = [&](int i, int j) {
+      return radius[i] > 0 ? ring[i] + j % kSlices : ring[i];
+    };
+
+    // faces, counter-clockwise seen from outside: lateral quads or triangles,
+    // and the two caps
+    pxr::VtArray<int> faces;
+    pxr::VtArray<int> vertex_counts;
+    for (int j = 0; j < kSlices; ++j) {
+      int count = 0;
+      int corners[4] = {vertex(0, j), vertex(0, j + 1), vertex(1, j + 1),
+                        vertex(1, j)};
+      for (int k = 0; k < 4; ++k) {
+        if (k == 0 || corners[k] != corners[k - 1]) {
+          if (k < 3 || corners[k] != corners[0]) {
+            faces.push_back(corners[k]);
+            count++;
+          }
+        }
+      }
+      vertex_counts.push_back(count);
+    }
+    if (radius[0] > 0) {
+      for (int j = kSlices - 1; j >= 0; --j) faces.push_back(vertex(0, j));
+      vertex_counts.push_back(kSlices);
+    }
+    if (radius[1] > 0) {
+      for (int j = 0; j < kSlices; ++j) faces.push_back(vertex(1, j));
+      vertex_counts.push_back(kSlices);
+    }
+
+    auto mesh_spec =
+        CreatePrimSpec(layer_, body_path, name, pxr::UsdGeomTokens->Mesh);
+    auto points_attr =
+        CreateAttributeSpec(layer_, mesh_spec, pxr::UsdGeomTokens->points,
+                            pxr::SdfValueTypeNames->Point3fArray);
+    SetAttributeDefault(layer_, points_attr, points);
+    auto face_vertex_idx_attr = CreateAttributeSpec(
+        layer_, mesh_spec, pxr::UsdGeomTokens->faceVertexIndices,
+        pxr::SdfValueTypeNames->IntArray);
+    SetAttributeDefault(layer_, face_vertex_idx_attr, faces);
+    auto face_vertex_counts_attr = CreateAttributeSpec(
+        layer_, mesh_spec, pxr::UsdGeomTokens->faceVertexCounts,
+        pxr::SdfValueTypeNames->IntArray);
+    SetAttributeDefault(layer_, face_vertex_counts_attr, vertex_counts);
+    auto subdivision_scheme = CreateAttributeSpec(
+        layer_, mesh_spec, pxr::UsdGeomTokens->subdivisionScheme,
+        pxr::SdfValueTypeNames->Token);
+    SetAttributeDefault(layer_, subdivision_scheme, pxr::UsdGeomTokens->none);
+    return mesh_spec;
+  }
+
+  pxr::SdfPrimSpecHandle WriteConeGeom(const mjsGeom *geom,
+                                       const pxr::SdfPath &body_path) {
+    int geom_idx = mjs_getId(geom->element);
+    mjtNum *geom_size = &model_->geom_size[geom_idx * 3];
+    const bool native = geom_size[0] > 0 && geom_size[2] == 0;
+    auto name = GetAvailablePrimName(
+        ElementName(geom->element),
+        native ? pxr::UsdGeomTokens->Cone : pxr::UsdGeomTokens->Mesh,
+        body_path);
+    return WriteCone(name, geom_size, body_path);
   }
 
   pxr::SdfPrimSpecHandle WriteEllipsoid(const pxr::TfToken name, const mjtNum *size,
@@ -1717,6 +1822,9 @@ class ModelWriter {
         break;
       case mjGEOM_CYLINDER:
         geom_spec = WriteCylinderGeom(geom, body_path);
+        break;
+      case mjGEOM_CONE:
+        geom_spec = WriteConeGeom(geom, body_path);
         break;
       case mjGEOM_ELLIPSOID:
         geom_spec = WriteEllipsoidGeom(geom, body_path);

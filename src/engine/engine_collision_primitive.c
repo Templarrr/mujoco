@@ -97,9 +97,9 @@ int mjc_PlaneCapsule(const mjModel* m, mjData* d, mjPreContact* con, int g1, int
 }
 
 
-// plane : conical frustum (cylinder with different radii at its two ends)
-static int mjc_PlaneFrustum(const mjModel* m, mjData* d, mjPreContact* con, int g1, int g2,
-                            mjtNum margin) {
+// plane : cone
+int mjc_PlaneCone(const mjModel* m, mjData* d, mjPreContact* con, int g1, int g2,
+                  mjtNum margin) {
   const mjtNum* pos1 = d->geom_xpos + 3*g1;
   const mjtNum* pos2 = d->geom_xpos + 3*g2;
   const mjtNum* mat1 = d->geom_xmat + 9*g1;
@@ -110,8 +110,8 @@ static int mjc_PlaneFrustum(const mjModel* m, mjData* d, mjPreContact* con, int 
   mjtNum axis[3] = {mat2[2], mat2[5], mat2[8]};
 
   // radii at the ends along +axis (near) and -axis (far)
-  mjtNum rnear = size2[0];
-  mjtNum rfar = mju_cylinderBottom(size2);
+  mjtNum rnear = size2[2];
+  mjtNum rfar = size2[0];
 
   // project, make sure axis points towards plane
   mjtNum prjaxis = mju_dot3(normal, axis);
@@ -123,7 +123,7 @@ static int mjc_PlaneFrustum(const mjModel* m, mjData* d, mjPreContact* con, int 
     rfar = tmp;
   }
 
-  // compute normal distance to frustum center
+  // compute normal distance to cone center
   mjtNum vec[3] = {pos2[0] - pos1[0], pos2[1] - pos1[1], pos2[2] - pos1[2]};
   mjtNum dist0 = mju_dot3(vec, normal);
 
@@ -137,7 +137,7 @@ static int mjc_PlaneFrustum(const mjModel* m, mjData* d, mjPreContact* con, int 
     mju_scl3(vec, vec, 1/mju_sqrt(len_sqr));
   }
 
-  // disks parallel to plane: pick x-axis of frustum
+  // disks parallel to plane: pick x-axis of cone
   else {
     vec[0] = mat2[0];
     vec[1] = mat2[3];
@@ -210,11 +210,6 @@ int mjc_PlaneCylinder(const mjModel* m, mjData* d, mjPreContact* con, int g1, in
   const mjtNum* mat1 = d->geom_xmat + 9*g1;
   const mjtNum* mat2 = d->geom_xmat + 9*g2;
   const mjtNum* size2 = m->geom_size + 3*g2;
-
-  // conical frustum
-  if (mju_cylinderBottom(size2) != size2[0]) {
-    return mjc_PlaneFrustum(m, d, con, g1, g2, margin);
-  }
 
   mjtNum normal[3] = {mat1[2], mat1[5], mat1[8]};
   mjtNum axis[3] = {mat2[2], mat2[5], mat2[8]};
@@ -463,11 +458,11 @@ static void closestOnSegment2(mjtNum res[2], const mjtNum p[2], const mjtNum a[2
 }
 
 
-// sphere : conical frustum (cylinder with different radii at its two ends)
+// sphere : cone
 //  the problem is solved in the half-plane (rho, z) containing the sphere center and the axis,
-//  where the frustum is the trapezoid with corners (0, -h), (rb, -h), (rt, h), (0, h)
-static int mjc_SphereFrustum(const mjModel* m, mjData* d, mjPreContact* con, int g1, int g2,
-                             mjtNum margin) {
+//  where the cone is the trapezoid with corners (0, -h), (rb, -h), (rt, h), (0, h)
+int mjc_SphereCone(const mjModel* m, mjData* d, mjPreContact* con, int g1, int g2,
+                   mjtNum margin) {
   const mjtNum* pos1 = d->geom_xpos + 3*g1;
   const mjtNum* pos2 = d->geom_xpos + 3*g2;
   const mjtNum* mat1 = d->geom_xmat + 9*g1;
@@ -475,9 +470,9 @@ static int mjc_SphereFrustum(const mjModel* m, mjData* d, mjPreContact* con, int
   const mjtNum* size1 = m->geom_size + 3*g1;
   const mjtNum* size2 = m->geom_size + 3*g2;
 
-  // get frustum sizes and axis
-  mjtNum rt = size2[0];
-  mjtNum rb = mju_cylinderBottom(size2);
+  // get cone sizes and axis
+  mjtNum rb = size2[0];
+  mjtNum rt = size2[2];
   mjtNum h = size2[1];
   mjtNum axis[3] = {mat2[2], mat2[5], mat2[8]};
 
@@ -527,7 +522,7 @@ static int mjc_SphereFrustum(const mjModel* m, mjData* d, mjPreContact* con, int
     int ncon = mjraw_PlaneSphere(con, margin, pos_face, mat_face, size2, pos1, mat1, size1);
 
     if (ncon) {
-      // flip direction normal (because mjGEOM_PLANE < mjGEOM_SPHERE < mjGEOM_CYLINDER)
+      // flip direction normal (because mjGEOM_PLANE < mjGEOM_SPHERE < mjGEOM_CONE)
       mju_scl3(con[0].normal, con[0].normal, -1);
     }
     return ncon;
@@ -563,11 +558,6 @@ int mjc_SphereCylinder(const mjModel* m, mjData* d, mjPreContact* con, int g1, i
   const mjtNum* mat2 = d->geom_xmat + 9*g2;
   const mjtNum* size1 = m->geom_size + 3*g1;
   const mjtNum* size2 = m->geom_size + 3*g2;
-
-  // conical frustum
-  if (mju_cylinderBottom(size2) != size2[0]) {
-    return mjc_SphereFrustum(m, d, con, g1, g2, margin);
-  }
 
   // get cylinder sizes and axis
   mjtNum radius = size2[0];
