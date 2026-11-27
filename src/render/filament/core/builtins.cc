@@ -442,6 +442,61 @@ class TubeBuilder : public BuiltinBuilder {
   }
 };
 
+class FrustumBuilder : public BuiltinBuilder {
+ public:
+  // The radii are relative to the larger one, so max(top, bottom) == 1.
+  FrustumBuilder(Stacks nstack, Slices nslice, float top, float bottom) {
+    const int num_stacks = static_cast<int>(nstack);
+    const int num_slices = static_cast<int>(nslice);
+
+    const int verts_per_ring = num_slices + 1;
+    const int num_vertices = verts_per_ring * (num_stacks + 1);
+    positions_.reserve(num_vertices);
+    orientations_.reserve(num_vertices);
+    texcoords_.reserve(num_vertices);
+
+    // The radius grows linearly from bottom (z = -1) to top (z = 1), so the
+    // outward normal of the lateral surface is (cos, sin, -dr/dz).
+    const float slope = 0.5f * (top - bottom);
+    const float delta_angle = 2.f * std::numbers::pi / (float)num_slices;
+    const float delta_stack = 2.f / static_cast<float>(num_stacks);
+    for (int i = 0; i <= num_slices; ++i) {
+      const int geo_i = i % num_slices;
+      const float angle = static_cast<float>(geo_i) * delta_angle;
+      const float2 pt{std::cos(angle), std::sin(angle)};
+      const float4 orientation =
+          CalculateOrientation(normalize(float3{pt.x, pt.y, -slope}));
+      const float u = static_cast<float>(i) / num_slices;
+      for (int j = 0; j <= num_stacks; ++j) {
+        const float t = static_cast<float>(j) / static_cast<float>(num_stacks);
+        const float z = -1.0f + (static_cast<float>(j) * delta_stack);
+        const float radius = bottom + t * (top - bottom);
+        positions_.emplace_back(radius * pt.x, radius * pt.y, z);
+        orientations_.push_back(orientation);
+        texcoords_.emplace_back(u, 1.0f - t);
+      }
+    }
+
+    const int num_indices = kNumIndicesPerQuad * num_slices * num_stacks;
+    indices_.reserve(num_indices);
+
+    const int num_vertices_in_spine = num_stacks + 1;
+    for (int i = 0; i < num_slices; ++i) {
+      for (int j = 0; j < num_stacks; ++j) {
+        const int base_idx = (i * num_vertices_in_spine) + j;
+        const int next_base_idx = ((i + 1) * num_vertices_in_spine) + j;
+        const int i0 = base_idx + 0;
+        const int i1 = base_idx + 1;
+        const int i2 = next_base_idx + 1;
+        const int i3 = next_base_idx + 0;
+        AppendQuadIndices(indices_, i0, i3, i2, i1);
+      }
+    }
+
+    SetBounds({-1, -1, -1}, {1, 1, 1});
+  }
+};
+
 class ConeBuilder : public BuiltinBuilder {
  public:
   ConeBuilder(Stacks nstack, Slices nslice) {
@@ -884,6 +939,25 @@ const Mesh* Builtins::DomeBottom(Stacks nstack, Slices nslice) {
                                                false);
   };
   return GetMesh(dome_bottoms_, key, build);
+}
+
+const Mesh* Builtins::Frustum(Stacks nstack, Slices nslice, float top,
+                              float bottom) {
+  // Quantize the ratio of the smaller to the larger radius, and encode which
+  // end is the smaller one in the flip bit of the key.
+  static constexpr int kRatioSteps = 1024;
+  const bool top_smaller = top < bottom;
+  const float big = std::max(top, bottom);
+  const float ratio = big > 0 ? std::min(top, bottom) / big : 1.0f;
+  const int steps = static_cast<int>(std::lround(ratio * kRatioSteps));
+  auto key = Key(nstack, nslice, Quads{steps}, top_smaller);
+  auto build = [=, this]() {
+    const float small = static_cast<float>(steps) / kRatioSteps;
+    return BuiltinBuilder::Create<FrustumBuilder>(
+        engine_, nstack, nslice, top_smaller ? small : 1.0f,
+        top_smaller ? 1.0f : small);
+  };
+  return GetMesh(frustums_, key, build);
 }
 
 const Mesh* Builtins::Cone(Stacks nstack, Slices nslice) {

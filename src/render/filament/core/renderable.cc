@@ -14,6 +14,7 @@
 
 #include "render/filament/core/renderable.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <functional>
@@ -186,6 +187,9 @@ void Renderable::SetTransform(const float3& position, const mat3f& rotation) {
 
 void Renderable::SetSize(const float3& size) {
   trs_.size = size;
+  if (geom_type_ == mjGEOM_FRUSTUM && !parts_.empty()) {
+    UpdateFrustumMesh();
+  }
   UpdateTransform();
 }
 
@@ -407,6 +411,12 @@ void Renderable::Prepare(std::span<const mjrfRenderRequest*> requests,
       }
     }
 
+    if (geom_type_ == mjGEOM_FRUSTUM) {
+      // Hide the end disk of a cone's apex.
+      draw_state.hidden_parts = (trs_.size.x <= 0 ? 0x02 : 0) |
+                                (trs_.size.y <= 0 ? 0x04 : 0);
+    }
+
     const Mesh* mesh = !parts_.empty() ? parts_[0].mesh : nullptr;
     const auto draw_mode = static_cast<mjrDrawMode>(request->draw_mode);
     const bool reflective =
@@ -556,33 +566,54 @@ void Renderable::ApplyReceiveShadows(bool receive_shadow) {
 }
 
 void Renderable::SetWireframe(bool wireframe) {
-  static constexpr auto kWireframeType =
-      filament::RenderableManager::PrimitiveType::LINES;
-
   if (wireframe != curr_state_.wireframe) {
     curr_state_.wireframe = wireframe;
 
-    filament::RenderableManager& rm = GetEngine()->getRenderableManager();
     for (Part& part : parts_) {
-      filament::VertexBuffer* vertex_buffer =
-          part.mesh->GetFilamentVertexBuffer();
-      filament::IndexBuffer* wireframe_index_buffer =
-          part.mesh->GetWireframeIndexBuffer();
-      if (wireframe && wireframe_index_buffer) {
-        // Triangle meshes have a dedicated line index buffer enumerating the
-        // three edges of each triangle, addressed by doubling the range.
-        rm.setGeometryAt(rm.getInstance(part.entity), 0, kWireframeType,
-                         vertex_buffer, wireframe_index_buffer,
-                         2 * part.elem_offset, 2 * part.elem_count);
-      } else {
-        // Line meshes are drawn as-is in both modes.
-        rm.setGeometryAt(rm.getInstance(part.entity), 0,
-                         wireframe ? kWireframeType
-                                   : part.mesh->GetPrimitiveType(),
-                         vertex_buffer, part.mesh->GetFilamentIndexBuffer(),
-                         part.elem_offset, part.elem_count);
-      }
+      ApplyPartGeometry(part, wireframe);
     }
+  }
+}
+
+void Renderable::ApplyPartGeometry(Part& part, bool wireframe) {
+  static constexpr auto kWireframeType =
+      filament::RenderableManager::PrimitiveType::LINES;
+  filament::RenderableManager& rm = GetEngine()->getRenderableManager();
+  filament::VertexBuffer* vertex_buffer = part.mesh->GetFilamentVertexBuffer();
+  filament::IndexBuffer* wireframe_index_buffer =
+      part.mesh->GetWireframeIndexBuffer();
+  if (wireframe && wireframe_index_buffer) {
+    // Triangle meshes have a dedicated line index buffer enumerating the
+    // three edges of each triangle, addressed by doubling the range.
+    rm.setGeometryAt(rm.getInstance(part.entity), 0, kWireframeType,
+                     vertex_buffer, wireframe_index_buffer,
+                     2 * part.elem_offset, 2 * part.elem_count);
+  } else {
+    // Line meshes are drawn as-is in both modes.
+    rm.setGeometryAt(rm.getInstance(part.entity), 0,
+                     wireframe ? kWireframeType : part.mesh->GetPrimitiveType(),
+                     vertex_buffer, part.mesh->GetFilamentIndexBuffer(),
+                     part.elem_offset, part.elem_count);
+  }
+}
+
+const Mesh* Renderable::GetFrustumMesh() const {
+  Builtins* builtins = material_mgr_->GetObjectManager()->GetBuiltins();
+  return builtins->Frustum(Builtins::Stacks{frustum_nstack_},
+                           Builtins::Slices{frustum_nslice_}, trs_.size.x,
+                           trs_.size.y);
+}
+
+void Renderable::UpdateFrustumMesh() {
+  // The lateral surface of a frustum depends on the ratio of its radii, so
+  // swap in the matching mesh when the size changes it.
+  const Mesh* mesh = GetFrustumMesh();
+  Part& part = parts_[0];
+  if (mesh != part.mesh) {
+    part.mesh = mesh;
+    part.elem_offset = 0;
+    part.elem_count = mesh->GetFilamentIndexBuffer()->getIndexCount();
+    ApplyPartGeometry(part, curr_state_.wireframe);
   }
 }
 
@@ -669,6 +700,40 @@ void Renderable::SetGeomMesh(mjtGeom type, int nstack, int nslice, int nquad) {
           return bottom;
         } else {
           mju_error("Invalid index for cylinder geom: %d (expected [0,2])",
+                    index);
+          return trs.ToTransform();
+        }
+      };
+      break;
+    case mjGEOM_FRUSTUM:
+      // Conical frustums are a frustum-shaped tube with two disks at the ends.
+      // The size is (top radius, bottom radius, half-height).
+      frustum_nstack_ = nstack;
+      frustum_nslice_ = nslice;
+      AppendMesh(GetFrustumMesh());
+      AppendMesh(builtins->Disk(num_slices, num_quads));
+      AppendMesh(builtins->Disk(num_slices, num_quads));
+
+      get_transform_fn_ = [](int index, const Trs& trs) {
+        const float top = trs.size.x;
+        const float bottom = trs.size.y;
+        const float height = trs.size.z;
+        mat4f base = mat4f(trs.rotation, trs.translation);
+        if (index == 0) {
+          const float radius = std::max(top, bottom);
+          return base * mat4f::scaling(float3{radius, radius, height});
+        } else if (index == 1) {
+          // Move the first disk to the top of the frustum.
+          base *= mat4f::translation(float3{0, 0, height});
+          return base * mat4f::scaling(float3{top, top, height});
+        } else if (index == 2) {
+          // Move the second disk to the bottom of the frustum. Rotate the disk
+          // 180 degrees so that the normals point outwards.
+          base *= mat4f::translation(float3{0, 0, -height});
+          base *= mat4f::rotation(std::numbers::pi, float3{1, 0, 0});
+          return base * mat4f::scaling(float3{bottom, bottom, height});
+        } else {
+          mju_error("Invalid index for frustum geom: %d (expected [0,2])",
                     index);
           return trs.ToTransform();
         }

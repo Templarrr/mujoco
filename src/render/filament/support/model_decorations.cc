@@ -310,11 +310,6 @@ void ModelDecorations::Update(mjData* data, const mjvOption* vis_option,
       mjrf_setRenderableMesh(renderable.get(), meshes_.back().get(), 0, 0);
       size[1] = size[0];
       size[2] = 1.0f;
-    } else if (geom_type == mjGEOM_FRUSTUM) {
-      // TODO: add a frustum mesh; for now, draw the bounding cylinder
-      mjrf_setRenderableGeomMesh(renderable.get(), mjGEOM_CYLINDER, nstack,
-                                 nslice, nquad);
-      size[0] = size[1] = std::max(geom.size[0], geom.size[1]);
     } else {
       mjrf_setRenderableGeomMesh(renderable.get(), geom_type, nstack, nslice,
                                  nquad);

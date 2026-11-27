@@ -14,7 +14,6 @@
 
 #include "experimental/filament/compat/scene_geom_util.h"
 
-#include <algorithm>
 #include <cstring>
 #include <memory>
 
@@ -111,15 +110,10 @@ static void PrepareGeomMeshes(mjrfRenderable* renderable, const mjvGeom& geom,
       mjrf_setRenderableSize(renderable, size);
       break;
     }
-    case mjGEOM_FRUSTUM: {
-      // TODO: add a frustum mesh; for now, draw the bounding cylinder
-      const float r = std::max(geom.size[0], geom.size[1]);
-      const float size[3] = {r, r, geom.size[2]};
-      mjrf_setRenderableGeomMesh(renderable, mjGEOM_CYLINDER, nstack, nslice,
-                                 nquad);
-      mjrf_setRenderableSize(renderable, size);
+    case mjGEOM_FRUSTUM:
+      mjrf_setRenderableGeomMesh(renderable, geom_type, nstack, nslice, nquad);
+      mjrf_setRenderableSize(renderable, geom.size);
       break;
-    }
     case mjGEOM_FLEX:
       mjrf_setRenderableMesh(
           renderable, scene_objs->GetFlexMesh(geom.objid, geom.dataid), 0, 0);

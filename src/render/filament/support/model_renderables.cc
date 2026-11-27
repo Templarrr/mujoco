@@ -14,7 +14,6 @@
 
 #include "render/filament/support/model_renderables.h"
 
-#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <memory>
@@ -87,13 +86,15 @@ static bool GetSize(const mjModel* model, mjtGeom type, const mjtNum* size,
       out[1] = size[0];
       return true;
     case mjGEOM_CAPSULE:
+    case mjGEOM_CYLINDER:
       out[2] = size[1];
       out[1] = size[0];
       return true;
-    case mjGEOM_CYLINDER:
-      // TODO: add a frustum mesh; for now, a conical frustum (size[2] > 0) is
-      // drawn as its bounding cylinder
-      out[0] = out[1] = size[2] > 0 ? std::max(size[0], size[2]) : size[0];
+    case mjGEOM_FRUSTUM:
+      // A conical frustum geom is a cylinder in the model, with the radius at
+      // the -z end in size[2]; renderable frustums are sized (top, bottom,
+      // half-height).
+      out[1] = size[2];
       out[2] = size[1];
       return true;
     case mjGEOM_TRIANGLE:
@@ -114,7 +115,6 @@ static bool GetSize(const mjModel* model, mjtGeom type, const mjtNum* size,
     case mjGEOM_FLEX:
     case mjGEOM_SKIN:
     case mjGEOM_DISC:
-    case mjGEOM_FRUSTUM:
     case mjGEOM_NONE:
     case mjGEOM_LABEL:
       return false;
@@ -122,6 +122,17 @@ static bool GetSize(const mjModel* model, mjtGeom type, const mjtNum* size,
       mju_warning("Unsupported geom type: %d", type);
       return false;
   }
+}
+
+// Returns the type used to render geom i: conical frustums are cylinders in
+// the model, with a nonzero radius at the -z end in size[2].
+static mjtGeom GeomRenderType(const mjModel* model, int i) {
+  const mjtGeom type = (mjtGeom)model->geom_type[i];
+  const mjtNum* size = model->geom_size + (3 * i);
+  if (type == mjGEOM_CYLINDER && size[2] > 0 && size[2] != size[0]) {
+    return mjGEOM_FRUSTUM;
+  }
+  return type;
 }
 
 static void SetGeomMesh(mjrfRenderable* renderable, ModelResources* model_objs,
@@ -152,15 +163,13 @@ static void SetGeomMesh(mjrfRenderable* renderable, ModelResources* model_objs,
     case mjGEOM_DISC:
       mju_error("Disc meshes should be handled separately.");
       break;
-    case mjGEOM_FRUSTUM:
-      mju_error("Frustum is a cylinder in the model.");
-      break;
     case mjGEOM_PLANE:
     case mjGEOM_SPHERE:
     case mjGEOM_ELLIPSOID:
     case mjGEOM_BOX:
     case mjGEOM_CAPSULE:
     case mjGEOM_CYLINDER:
+    case mjGEOM_FRUSTUM:
     case mjGEOM_ARROW:
     case mjGEOM_ARROW1:
     case mjGEOM_ARROW2:
@@ -246,7 +255,7 @@ void ModelRenderables::UpdateQuality() {
   numquads_ = nquad;
 
   for (int i = 0; i < model->ngeom; ++i) {
-    const mjtGeom type = (mjtGeom)model->geom_type[i];
+    const mjtGeom type = GeomRenderType(model, i);
     if (type != mjGEOM_MESH && type != mjGEOM_SDF) {
       SetGeomMesh(geoms_[i].get(), model_resources_, type, model->geom_dataid[i]);
     }
@@ -485,7 +494,7 @@ void ModelRenderables::AddGeomGeoms() {
 
   geoms_.reserve(model->ngeom);
   for (int i = 0; i < model->ngeom; ++i) {
-    const mjtGeom type = (mjtGeom)model->geom_type[i];
+    const mjtGeom type = GeomRenderType(model, i);
 
     mjrfRenderableParams params;
     mjrf_defaultRenderableParams(&params);
