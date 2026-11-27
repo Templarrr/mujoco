@@ -36,6 +36,7 @@ _PRIMITIVE_GEOM_TYPES = frozenset({
     mujoco.mjtGeom.mjGEOM_ELLIPSOID,
     mujoco.mjtGeom.mjGEOM_CYLINDER,
     mujoco.mjtGeom.mjGEOM_BOX,
+    mujoco.mjtGeom.mjGEOM_CONE,
 })
 
 

@@ -223,6 +223,82 @@ static void radialField3d(mjtNum field[3], const mjtNum a[3], const mjtNum x[3],
   if (x[2] < 0) field[2] = -field[2];
 }
 
+// signed distance and its gradient (if not NULL) of a cone with radius size[0] at z = -size[1] and
+// size[2] at z = size[1]; the problem is solved in the half-plane (rho, z) containing x and the
+// axis, where the cone is a trapezoid
+static mjtNum coneDistance(mjtNum gradient[3], const mjtNum x[3], const mjtNum size[3]) {
+  mjtNum rb = size[0], rt = size[2], h = size[1];
+
+  // point in the half-plane, radial unit vector u
+  mjtNum rho = mju_sqrt(x[0]*x[0] + x[1]*x[1]);
+  mjtNum u[2] = {1, 0};
+  if (rho > mjMINVAL) {
+    u[0] = x[0] / rho;
+    u[1] = x[1] / rho;
+  }
+  mjtNum p[2] = {rho, x[2]};
+
+  // corners and outward normals of the edges: bottom cap, round side, top cap
+  mjtNum corner[4][2] = {{0, -h}, {rb, -h}, {rt, h}, {0, h}};
+  mjtNum len = mju_sqrt(4*h*h + (rb - rt)*(rb - rt));
+  mjtNum edge_normal[3][2] = {{0, -1}, {2*h/len, (rb - rt)/len}, {0, 1}};
+
+  // signed distances to the lines of the edges, skip edges of zero length (apex of a cone)
+  int inside = 1, best = -1;
+  mjtNum dist = 0, g[2] = {0, 0};
+  for (int k=0; k < 3; k++) {
+    mjtNum sdist = (p[0] - corner[k+1][0])*edge_normal[k][0] +
+                   (p[1] - corner[k+1][1])*edge_normal[k][1];
+    if (sdist > 0) {
+      inside = 0;
+    }
+    int degenerate = (k == 0 && rb <= 0) || (k == 2 && rt <= 0);
+    if (!degenerate && (best < 0 || sdist > dist)) {
+      best = k;
+      dist = sdist;
+    }
+  }
+
+  // inside: distance to the nearest face
+  if (inside) {
+    g[0] = edge_normal[best][0];
+    g[1] = edge_normal[best][1];
+  }
+
+  // outside: distance to the closest point on the boundary
+  else {
+    mjtNum dist_sqr = -1, dif[2] = {0, 0};
+    for (int k=0; k < 3; k++) {
+      mjtNum ab[2] = {corner[k+1][0] - corner[k][0], corner[k+1][1] - corner[k][1]};
+      mjtNum ab_sqr = ab[0]*ab[0] + ab[1]*ab[1];
+      mjtNum t = ab_sqr > mjMINVAL ?
+                 ((p[0] - corner[k][0])*ab[0] + (p[1] - corner[k][1])*ab[1]) / ab_sqr : 0;
+      t = mju_clip(t, 0, 1);
+      mjtNum dk[2] = {p[0] - corner[k][0] - t*ab[0], p[1] - corner[k][1] - t*ab[1]};
+      mjtNum dk_sqr = dk[0]*dk[0] + dk[1]*dk[1];
+      if (dist_sqr < 0 || dk_sqr < dist_sqr) {
+        dist_sqr = dk_sqr;
+        dif[0] = dk[0];
+        dif[1] = dk[1];
+      }
+    }
+    dist = mju_sqrt(dist_sqr);
+    if (dist > mjMINVAL) {
+      g[0] = dif[0] / dist;
+      g[1] = dif[1] / dist;
+    }
+  }
+
+  // map gradient from the half-plane to 3D
+  if (gradient) {
+    gradient[0] = g[0]*u[0];
+    gradient[1] = g[0]*u[1];
+    gradient[2] = g[1];
+  }
+  return dist;
+}
+
+
 static mjtNum geomDistance(const mjModel* m, const mjData* d, const mjpPlugin* p,
                            int i, const mjtNum x[3], mjtGeom type) {
   mjtNum a[3], b[3];
@@ -274,6 +350,9 @@ static mjtNum geomDistance(const mjModel* m, const mjData* d, const mjpPlugin* p
       return -mju_min(size[0], mju_min(size[1], size[2]));
     }
     return k0 * (k0 - 1.0) / k1;
+
+  case mjGEOM_CONE:
+    return coneDistance(NULL, x, size);
 
   case mjGEOM_CYLINDER:
     a[0] = mju_sqrt(x[0]*x[0]+x[1]*x[1]) - size[0];
@@ -392,6 +471,10 @@ static void geomGradient(mjtNum gradient[3], const mjModel* m, const mjData* d,
     } else {
       mju_normalize3(gradient);
     }
+    break;
+
+  case mjGEOM_CONE:
+    coneDistance(gradient, x, size);
     break;
 
   case mjGEOM_CYLINDER:
@@ -1412,4 +1495,16 @@ int mjc_FlexSDF(const mjModel* m, const mjData* d, mjPreContact* con, int* elem,
   }
 
   return cnt;
+}
+
+
+// collision between a signed distance field and a cone: the cone, whose type comes after that of
+// the SDF, is the first geom given to mjc_SDF, and the contact normals are reversed
+int mjc_SDFCone(const mjModel* m, mjData* d, mjPreContact* con, int g1, int g2, mjtNum margin) {
+  int ncon = mjc_SDF(m, d, con, g2, g1, margin);
+  for (int i=0; i < ncon; i++) {
+    mju_scl3(con[i].normal, con[i].normal, -1);
+    mju_scl3(con[i].tangent, con[i].tangent, -1);
+  }
+  return ncon;
 }

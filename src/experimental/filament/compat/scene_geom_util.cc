@@ -110,6 +110,10 @@ static void PrepareGeomMeshes(mjrfRenderable* renderable, const mjvGeom& geom,
       mjrf_setRenderableSize(renderable, size);
       break;
     }
+    case mjGEOM_CONE:
+      mjrf_setRenderableGeomMesh(renderable, geom_type, nstack, nslice, nquad);
+      mjrf_setRenderableSize(renderable, geom.size);
+      break;
     case mjGEOM_FLEX:
       mjrf_setRenderableMesh(
           renderable, scene_objs->GetFlexMesh(geom.objid, geom.dataid), 0, 0);

@@ -7,6 +7,18 @@ Upcoming Version (not yet released)
 
 General
 ^^^^^^^
+- Added the :ref:`cone<body-geom-cone>` geom and site type :ref:`mjGEOM_CONE<mjtGeom>`, for cones and conical
+  frustums: ``size="radius-bottom half-height radius-top"``, or ``size="radius-from radius-to"`` with
+  :ref:`fromto<body-geom-fromto>`, where the second radius defaults to 0. Collisions, ray casting, signed distances,
+  bounding volumes, mass, center of mass and inertia are exact; plane and sphere collisions have dedicated routines.
+  The USD exporter writes a native cone where possible and a mesh with a warning otherwise, and the Unity importer
+  uses a cylinder with the mean radius and logs an error. Cones are not yet supported by MJX and MuJoCo Warp. See
+  `model/cone/ <https://github.com/google-deepmind/mujoco/tree/main/model/cone/>`__ for example models.
+
+  .. image:: images/XMLreference/cone_falling.gif
+     :width: 45%
+     :align: right
+
 - Added :ref:`mju_QP`, a dual active-set solver for dense convex quadratic programs with bounds and two-sided linear
   constraints. Constraints can be soft: a soft constraint holds exactly up to a threshold on its multiplier and then
   yields with a given compliance, so problems with soft constraints remain feasible. The solver can be warmstarted

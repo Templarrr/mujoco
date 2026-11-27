@@ -70,7 +70,8 @@ static int isBuiltinWithUV(int type) {
           type == mjGEOM_ARROW1 ||
           type == mjGEOM_ARROW2 ||
           type == mjGEOM_TRIANGLE ||
-          type == mjGEOM_DISC);
+          type == mjGEOM_DISC ||
+          type == mjGEOM_CONE);
 }
 
 
@@ -515,6 +516,56 @@ static void renderGeom(const mjvGeom* geom, int mode, const float* headpos,
       glEnable(GL_CULL_FACE);
     }
     break;
+
+  case mjGEOM_CONE:                           // cone or conical frustum
+  {
+    const int nslice = 64;
+    const float r_bottom = mjMAX(0.0f, size[0]);
+    const float r_top = mjMAX(0.0f, size[1]);
+    const float h = size[2];
+    if (h <= 0.0f || (r_top == 0.0f && r_bottom == 0.0f)) {
+      break;
+    }
+
+    // round side: normal tilted along the axis by the slope of the wall
+    float len = sqrtf(4.0f*h*h + (r_bottom-r_top)*(r_bottom-r_top));
+    float nxy = 2.0f*h/len;
+    float nz = (r_bottom-r_top)/len;
+    glBegin(GL_QUAD_STRIP);
+    for (int j=0; j <= nslice; j++) {
+      float angle = (float)(2.0 * mjPI * (j % nslice)) / (float)nslice;
+      float c = cosf(angle);
+      float s = sinf(angle);
+      glNormal3f(nxy*c, nxy*s, nz);
+      glTexCoord2f((float)j / (float)nslice, 1.0f);
+      glVertex3f(r_top*c, r_top*s, h);
+      glTexCoord2f((float)j / (float)nslice, 0.0f);
+      glVertex3f(r_bottom*c, r_bottom*s, -h);
+    }
+    glEnd();
+
+    // flat sides, unless at the apex of a cone
+    for (int side=0; side < 2; side++) {
+      float r = side == 0 ? r_top : r_bottom;
+      if (r <= 0.0f) {
+        continue;
+      }
+      glNormal3f(0.0f, 0.0f, side == 0 ? 1.0f : -1.0f);
+      glBegin(GL_TRIANGLE_FAN);
+      glTexCoord2f(0.5f, 0.5f);
+      glVertex3f(0.0f, 0.0f, side == 0 ? h : -h);
+      for (int j=0; j <= nslice; j++) {
+        int k = ((side == 0) ? j : (nslice - j)) % nslice;
+        float angle = (float)(2.0 * mjPI * k) / (float)nslice;
+        float c = cosf(angle);
+        float s = sinf(angle);
+        glTexCoord2f(0.5f + 0.5f*c, 0.5f + 0.5f*s);
+        glVertex3f(r*c, r*s, side == 0 ? h : -h);
+      }
+      glEnd();
+    }
+    break;
+  }
 
   case mjGEOM_DISC:                           // disc or annulus
   {

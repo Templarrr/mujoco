@@ -90,6 +90,11 @@ static bool GetSize(const mjModel* model, mjtGeom type, const mjtNum* size,
       out[2] = size[1];
       out[1] = size[0];
       return true;
+    case mjGEOM_CONE:
+      // Cone renderables are sized (bottom radius, top radius, half-height).
+      out[1] = size[2];
+      out[2] = size[1];
+      return true;
     case mjGEOM_TRIANGLE:
     case mjGEOM_PLANE:
       out[2] = 1.0f;
@@ -151,6 +156,7 @@ static void SetGeomMesh(mjrfRenderable* renderable, ModelResources* model_objs,
     case mjGEOM_BOX:
     case mjGEOM_CAPSULE:
     case mjGEOM_CYLINDER:
+    case mjGEOM_CONE:
     case mjGEOM_ARROW:
     case mjGEOM_ARROW1:
     case mjGEOM_ARROW2:

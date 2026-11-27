@@ -174,6 +174,9 @@ void UpdateGeomRBound(mjModel* model, bool has_geom_size, bool has_geom_dataid) 
         case mjGEOM_CYLINDER:
           model->geom_rbound[g] = std::hypot(size[0], size[1]);
           break;
+        case mjGEOM_CONE:
+          model->geom_rbound[g] = std::hypot(std::max(size[0], size[2]), size[1]);
+          break;
         case mjGEOM_ELLIPSOID:
           model->geom_rbound[g] = std::max({size[0], size[1], size[2]});
           break;

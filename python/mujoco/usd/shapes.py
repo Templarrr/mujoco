@@ -217,20 +217,24 @@ class TriangleMesh:
       radius: float,
       height: float,
       texture_type: Optional[mujoco.mjtTexture],
-      resolution: int
+      resolution: int,
+      top_radius: Optional[float] = None,
   ) -> "TriangleMesh":
-    """Creates a cylinder."""
+    """Creates a cylinder, or a conical frustum if top_radius is given."""
     vertices = []
     triangles = []
+    if top_radius is None:
+      top_radius = radius
 
     # adding all the vertices for the cylinder including
     # two center vertices at ends
     for i in range(2):
       z = 0 if i == 0 else height
+      r = radius if i == 0 else top_radius
       for j in range(resolution + 1):
         theta = 2 * np.pi * j / resolution
-        x = radius * np.cos(theta)
-        y = radius * np.sin(theta)
+        x = r * np.cos(theta)
+        y = r * np.sin(theta)
         vertices.append([x, y, z])
     vertices.append([0, 0, 0])
     vertices.append([0, 0, height])
@@ -350,6 +354,16 @@ def mesh_config_generator(
             "height": size[2] * 2,
         },
     }
+  elif geom_type == mujoco.mjtGeom.mjGEOM_CONE:
+    # scene geom size: radius at the bottom, radius at the top, half-height
+    config = {
+        "name": name,
+        "cylinder": {
+            "radius": size[0],
+            "top_radius": size[1],
+            "height": size[2] * 2,
+        },
+    }
   elif geom_type == mujoco.mjtGeom.mjGEOM_BOX:
     config = {
         "name": name,
@@ -409,7 +423,8 @@ def mesh_factory(
           radius=mesh_config[shape]["radius"],
           height=mesh_config[shape]["height"],
           texture_type=texture_type,
-          resolution=resolution
+          resolution=resolution,
+          top_radius=mesh_config[shape].get("top_radius"),
       )
     else:
       raise ValueError("Shape not supported")

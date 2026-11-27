@@ -222,6 +222,39 @@ TEST_F(XMLWriterTest, SavesInertial) {
   EXPECT_THAT(saved_xml, HasSubstr("mass=\"1\""));
 }
 
+TEST_F(XMLWriterTest, SavesCone) {
+  static constexpr char xml[] = R"(
+  <mujoco>
+    <worldbody>
+      <body>
+        <geom type="cone" size=".1 .2 .05"/>
+        <geom type="cone" size=".1 .2"/>
+        <geom type="cone" size=".05" fromto="0 0 0 0 0 1"/>
+        <geom type="cylinder" size=".1 .2"/>
+      </body>
+    </worldbody>
+  </mujoco>
+  )";
+  MjModelPtr model = LoadModelFromString(xml);
+  ASSERT_THAT(model, NotNull());
+  std::string saved_xml = SaveAndReadXml(model.get());
+  EXPECT_THAT(saved_xml, HasSubstr("size=\"0.1 0.2 0.05\" type=\"cone\""));
+  EXPECT_THAT(saved_xml, HasSubstr("size=\"0.1 0.2\" type=\"cone\""));
+  EXPECT_THAT(saved_xml, HasSubstr("size=\"0.1 0.2\" type=\"cylinder\""));
+
+  // the saved model compiles to the same sizes, poses and inertia
+  MjModelPtr saved = LoadModelFromString(saved_xml);
+  ASSERT_THAT(saved, NotNull());
+  for (int i = 0; i < 3 * model->ngeom; i++) {
+    EXPECT_NEAR(saved->geom_size[i], model->geom_size[i], MjTol(1e-12, 1e-6));
+    EXPECT_NEAR(saved->geom_pos[i], model->geom_pos[i], MjTol(1e-12, 1e-6));
+  }
+  for (int i = 0; i < 3 * model->nbody; i++) {
+    EXPECT_NEAR(saved->body_ipos[i], model->body_ipos[i], MjTol(1e-12, 1e-6));
+  }
+  EXPECT_NEAR(saved->body_mass[1], model->body_mass[1], MjTol(1e-10, 1e-4));
+}
+
 // the attributes which say how to save are read into the spec and not saved
 TEST_F(XMLWriterTest, SavingControlsAreNotSaved) {
   static constexpr char xml[] = R"(

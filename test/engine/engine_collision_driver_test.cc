@@ -18,6 +18,7 @@
 #include "src/engine/engine_collision_nonconvex.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -37,6 +38,7 @@ namespace {
 
 using MjCollisionTest = MujocoTest;
 using GeomPair = std::pair<std::string, std::string>;
+using ::testing::AnyOf;
 using ::testing::ElementsAre;
 using ::testing::IsEmpty;
 using ::testing::NotNull;
@@ -2513,5 +2515,143 @@ TEST_F(MjCollisionTest, HFieldFlexCollisionAndPinnedSkip) {
   mj_forward(m_pin.get(), d_pin.get());
   EXPECT_EQ(d_pin->ncon, 0);
 }
+TEST_F(MjCollisionTest, PlaneCone) {
+  // cone standing on its base and cone lying on its side, both 1mm deep
+  static constexpr char xml[] = R"(
+  <mujoco>
+    <worldbody>
+      <geom name="plane" type="plane" size="10 10 .1"/>
+      <body>
+        <freejoint/>
+        <geom name="standing" type="cone" size=".3 .5" pos="0 0 .499"/>
+      </body>
+      <body>
+        <freejoint/>
+        <geom name="lying" type="cone" size="0 .2"
+              fromto="0 3 -.001 0.98058068 3 0.19511614"/>
+      </body>
+    </worldbody>
+  </mujoco>
+  )";
+  std::array<char, 1000> error;
+  MjModelPtr model = LoadModelFromString(xml, error.data(), error.size());
+  ASSERT_THAT(model, NotNull()) << error.data();
+  MjDataPtr data = MakeData(model);
+  mj_forward(model.get(), data.get());
+
+  // standing: one point on the rim and two triangle points; lying: the apex
+  // and the point on the rim of the base
+  ASSERT_EQ(data->ncon, 5);
+  int nstanding = 0, nlying = 0;
+  for (int i = 0; i < data->ncon; i++) {
+    const mjContact* con = data->contact + i;
+    EXPECT_NEAR(con->dist, -0.001, MjTol(1e-8, 1e-5));
+    EXPECT_NEAR(con->pos[2], -0.0005, MjTol(1e-8, 1e-5));
+    EXPECT_THAT(AsVector(con->frame, 3), ElementsAre(0, 0, 1));
+    if (con->geom[1] == 1) {
+      nstanding++;
+      EXPECT_NEAR(con->pos[0] * con->pos[0] + con->pos[1] * con->pos[1], 0.09,
+                  MjTol(1e-8, 1e-5));
+    } else {
+      nlying++;
+      EXPECT_NEAR(con->pos[1], 3, MjTol(1e-8, 1e-5));
+      EXPECT_THAT(con->pos[0], AnyOf(MjNear(0, 1e-8, 1e-5),
+                                     MjNear(1.0198039, 1e-6, 1e-5)));
+    }
+  }
+  EXPECT_EQ(nstanding, 3);
+  EXPECT_EQ(nlying, 2);
+}
+
+TEST_F(MjCollisionTest, ConeDistance) {
+  // cone with apex at z = 0.5 and base of radius 0.5 at z = -0.5
+  static constexpr char xml[] = R"(
+  <mujoco>
+    <worldbody>
+      <geom name="cone" type="cone" size=".5 .5"/>
+      <body pos="0 0 10">
+        <freejoint/>
+        <geom name="sphere" type="sphere" size=".1"/>
+        <geom name="box" type="box" size=".1 .1 .1" pos="0 0 2"/>
+        <geom name="frustum" type="cone" size=".2 .1 .1" pos="0 0 4"/>
+      </body>
+    </worldbody>
+  </mujoco>
+  )";
+  std::array<char, 1000> error;
+  MjModelPtr model = LoadModelFromString(xml, error.data(), error.size());
+  ASSERT_THAT(model, NotNull()) << error.data();
+  MjDataPtr data = MakeData(model);
+  const mjtNum tol = MjTol(1e-6, 1e-4);
+
+  // distance of a geom at the given position from the cone
+  auto distance = [&](int geom, mjtNum x, mjtNum z) {
+    mjtNum offset = model->geom_pos[3 * geom + 2];
+    data->qpos[0] = x;
+    data->qpos[1] = 0;
+    data->qpos[2] = z - offset;
+    mj_forward(model.get(), data.get());
+    return mj_geomDistance(model.get(), data.get(), 0, geom, 10, nullptr);
+  };
+
+  // sphere: round side, apex, base, and inside near the base
+  const mjtNum s = 1 / mju_sqrt(1.25);
+  EXPECT_NEAR(distance(1, 1, 0), 0.75 * s - 0.1, tol);
+  EXPECT_NEAR(distance(1, 0, 1), 0.4, tol);
+  EXPECT_NEAR(distance(1, 0.3, -1), 0.4, tol);
+  EXPECT_NEAR(distance(1, 0, -0.45), -0.15, tol);
+  EXPECT_NEAR(distance(1, 0.1, 0.5), 0.1 * s - 0.1, tol);
+
+  // box: above the apex, beside the round side
+  EXPECT_NEAR(distance(2, 0, 1), 0.4, tol);
+  EXPECT_NEAR(distance(2, 1, 0), 0.6 * s, tol);
+
+  // frustum with radius 0.1 at z = 0.1 and 0.2 at z = -0.1: rim of its base
+  // beside the round side of the cone
+  EXPECT_NEAR(distance(3, 1, 0), 0.5 * s, tol);
+}
+
+TEST_F(MjCollisionTest, ConeAtRest) {
+  // frustum standing on a plane, and frustum lying on its side on a box
+  static constexpr char xml[] = R"(
+  <mujoco>
+    <worldbody>
+      <geom type="plane" size="10 10 .1"/>
+      <geom type="box" size="1 1 .1" pos="0 3 0"/>
+      <body pos="0 0 .1">
+        <freejoint/>
+        <geom type="cone" size=".1 .1 .05"/>
+      </body>
+      <body pos="0 3 .1">
+        <freejoint/>
+        <geom type="cone" size=".05 .1"
+              fromto="-.1 0 .05 .1 0 .1"/>
+      </body>
+    </worldbody>
+  </mujoco>
+  )";
+  std::array<char, 1000> error;
+  MjModelPtr model = LoadModelFromString(xml, error.data(), error.size());
+  ASSERT_THAT(model, NotNull()) << error.data();
+  MjDataPtr data = MakeData(model);
+
+  // settle, then record the poses
+  for (int i = 0; i < 500; i++) {
+    mj_step(model.get(), data.get());
+  }
+  std::vector<mjtNum> qpos = AsVector(data->qpos, model->nq);
+
+  // simulate: the frustums stay at rest
+  for (int i = 0; i < 1000; i++) {
+    mj_step(model.get(), data.get());
+  }
+  for (int i = 0; i < model->nv; i++) {
+    EXPECT_LT(mju_abs(data->qvel[i]), 1e-3) << "dof " << i;
+  }
+  for (int i = 0; i < model->nq; i++) {
+    EXPECT_NEAR(data->qpos[i], qpos[i], 1e-4) << "qpos " << i;
+  }
+}
+
 }  // namespace
 }  // namespace mujoco

@@ -88,6 +88,7 @@
       <xs:enumeration value="box"/>
       <xs:enumeration value="mesh"/>
       <xs:enumeration value="sdf"/>
+      <xs:enumeration value="cone"/>
     </xs:restriction>
   </xs:simpleType>
 

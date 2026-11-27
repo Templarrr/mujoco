@@ -4162,6 +4162,7 @@ EMSCRIPTEN_BINDINGS(mujoco_bindings) {
     .value("mjGEOM_BOX", mjGEOM_BOX)
     .value("mjGEOM_MESH", mjGEOM_MESH)
     .value("mjGEOM_SDF", mjGEOM_SDF)
+    .value("mjGEOM_CONE", mjGEOM_CONE)
     .value("mjNGEOMTYPES", mjNGEOMTYPES)
     .value("mjGEOM_ARROW", mjGEOM_ARROW)
     .value("mjGEOM_ARROW1", mjGEOM_ARROW1)

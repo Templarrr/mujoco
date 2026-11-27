@@ -2782,7 +2782,7 @@ helps clarify the role of bodies and geoms in MuJoCo.
 
 .. _body-geom-type:
 
-:at:`type`: :at-val:`[plane, hfield, sphere, capsule, ellipsoid, cylinder, box, mesh, sdf], "sphere"`
+:at:`type`: :at-val:`[plane, hfield, sphere, capsule, ellipsoid, cylinder, box, mesh, sdf, cone], "sphere"`
    Type of geometric shape. The keywords have the following meaning: The **plane** type defines a surface which is
    infinite for collision detection purposes. It can only be attached to the world body or static children of the world.
    The plane passes through a point specified via the pos attribute. It is normal to the Z axis of the geom's local
@@ -2830,6 +2830,33 @@ helps clarify the role of bodies and geoms in MuJoCo.
    The **cylinder** type defines a cylinder. It requires two size parameters: the radius and half-height of the
    cylinder. The cylinder is oriented along the Z axis of the geom's frame. It can alternatively be specified with the
    fromto attribute below.
+
+   .. image:: images/XMLreference/cone.png
+      :width: 45%
+      :align: right
+      :target: https://github.com/google-deepmind/mujoco/blob/main/model/cone/gallery.xml
+
+   .. _body-geom-cone:
+
+   The **cone** type defines a cone or a conical frustum, oriented along the Z axis of the geom's frame. It takes up to
+   three size parameters: the radius at the -Z end, the half-height and the radius at the +Z end. The third parameter
+   defaults to 0, so ``size="radius half-height"`` defines a cone with its apex at the +Z end, while a positive third
+   parameter defines a frustum. Either radius can be 0 but not both. When the geom is specified with
+   :ref:`fromto<body-geom-fromto>`, the two size parameters are the radii at the first ("from") and second ("to") point,
+   ``size="radius-from radius-to"``, and the second one defaults to 0, so ``size="radius"`` defines a cone pointing
+   from the first towards the second point. Cones are treated as analytic surfaces: collisions with planes and spheres
+   are computed with dedicated routines, and all other pairs use the general-purpose convex collider with exact support
+   functions, including the multiple contacts of flat faces and edges. Ray casting, signed distances and the mass,
+   center of mass and inertia (solid or :ref:`shell <body-geom-shellinertia>`) are exact. Note that, unlike other geoms,
+   the center of mass of a cone is not at the geom origin, which is half-way along its axis, but closer to its larger
+   end. Cones cannot be fitted to meshes or used as :ref:`tendon wrapping<spatial-geom>` obstacles, and are not
+   supported by MJX and MuJoCo Warp. When exporting to formats without a native cone, cones are approximated by meshes,
+   or by cylinders with the mean radius if the format has no meshes either, and a warning is issued.
+
+   .. image:: images/XMLreference/cone_contacts.png
+      :width: 45%
+      :align: right
+      :target: https://github.com/google-deepmind/mujoco/blob/main/model/cone/contacts.xml
 
    The **box** type defines a box. Three size parameters are required, corresponding to the half-sizes of the box along
    the X, Y and Z axes of the geom's frame. Note that box-box collisions can generate up to 8 contact points.
@@ -2923,6 +2950,10 @@ helps clarify the role of bodies and geoms in MuJoCo.
    +---------+--------+------------------------------------------------------------------------------------------------+
    |cylinder | 1 or 2 | Radius of the cylinder; half-length of the cylinder when not using the :at:`fromto`            |
    |         |        | specification.                                                                                 |
+   +---------+--------+------------------------------------------------------------------------------------------------+
+   | cone    | 1 to 3 | :ref:`Cone or conical frustum<body-geom-cone>`: radius at the -Z end; half-length; radius at   |
+   |         |        | the +Z end (default 0). With :at:`fromto`: radius at the "from" point; radius at the "to" point|
+   |         |        | (default 0).                                                                                   |
    +---------+--------+------------------------------------------------------------------------------------------------+
    | box     | 3      | X half-size; Y half-size; Z half-size.                                                         |
    +---------+--------+------------------------------------------------------------------------------------------------+
@@ -3079,7 +3110,7 @@ helps clarify the role of bodies and geoms in MuJoCo.
       :width: 350px
       :align: right
 
-   This attribute can only be used with capsule, box, cylinder and ellipsoid geoms. It provides an alternative
+   This attribute can only be used with capsule, box, cylinder, ellipsoid and cone geoms. It provides an alternative
    specification of the geom length as well as the frame position and orientation. The six numbers are the 3D
    coordinates of one point followed by the 3D coordinates of another point. The elongated part of the geom connects
    these two points, with the +Z axis of the geom's frame oriented from the first towards the second point, while in the
@@ -3087,7 +3118,7 @@ helps clarify the role of bodies and geoms in MuJoCo.
    orientation is obtained with the same procedure as the :at:`zaxis` attribute described in :ref:`Frame orientations
    <COrientation>`. The frame position is in the middle between the end points. If this attribute is specified, the
    remaining position and orientation-related attributes are ignored. The image on the right demonstrates use of
-   :at:`fromto` with the four supported geoms, using identical Z values. The model is `here <_static/fromto.xml>`__.
+   :at:`fromto` with the five supported geoms, using identical Z values. The model is `here <_static/fromto.xml>`__.
    Note that the :at:`fromto` semantics of *capsule* are unique: the two end points specify the segment around which
    the radius defines the capsule surface.
 
@@ -3228,7 +3259,7 @@ tendons, constructing slider-crank transmissions for actuators.
 
 .. _body-site-type:
 
-:at:`type`: :at-val:`[sphere, capsule, ellipsoid, cylinder, box, mesh], "sphere"`
+:at:`type`: :at-val:`[sphere, capsule, ellipsoid, cylinder, box, mesh, cone], "sphere"`
    Type of geometric shape. This is used for rendering, and also determines the active sensor zone for :ref:`touch
    sensors <sensor-touch>`.
 
@@ -3262,7 +3293,7 @@ tendons, constructing slider-crank transmissions for actuators.
 .. _body-site-fromto:
 
 :at:`fromto`: :at-val:`real(6), optional`
-   This attribute can only be used with capsule, cylinder, ellipsoid and box sites. It provides an alternative
+   This attribute can only be used with capsule, cylinder, ellipsoid, box and cone sites. It provides an alternative
    specification of the site length as well as the frame position and orientation. The six numbers are the 3D
    coordinates of one point followed by the 3D coordinates of another point. The elongated part of the site connects
    these two points, with the +Z axis of the site's frame oriented from the first towards the second point. The frame

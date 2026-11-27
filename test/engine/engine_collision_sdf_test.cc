@@ -421,6 +421,65 @@ TEST_F(SdfTest, PrimitiveGradientAndDistanceSingularities) {
   EXPECT_MJTNUM_EQ(gradient[2], 0.0);
 }
 
+TEST_F(SdfTest, ConeDistanceAndGradient) {
+  // cone with apex at z = 0.5 and base of radius 0.5 at z = -0.5
+  static constexpr char kConeXml[] = R"(
+  <mujoco>
+    <worldbody>
+      <geom type="cone" size="0.5 0.5"/>
+    </worldbody>
+  </mujoco>
+  )";
+  char error[1024];
+  MjModelPtr model = LoadModelFromString(kConeXml, error, sizeof(error));
+  ASSERT_THAT(model.get(), NotNull()) << error;
+  MjDataPtr data = MakeData(model);
+  ASSERT_THAT(data, NotNull());
+
+  mjSDF sdf{};
+  const mjpPlugin* null_plugin = nullptr;
+  int id = 0;
+  mjtGeom type = mjGEOM_CONE;
+  sdf.plugin = &null_plugin;
+  sdf.type = mjSDFTYPE_SINGLE;
+  sdf.id = &id;
+  sdf.geomtype = &type;
+
+  // distances: round side, apex, base, inside near the base
+  const mjtNum s = 1 / mju_sqrt(1.25);
+  const mjtNum points[4][3] = {{1, 0, 0}, {0, 0, 1}, {0.3, 0, -1}, {0, 0, -0.4}};
+  const mjtNum dist[4] = {0.75 * s, 0.5, 0.5, -0.1};
+  for (int i = 0; i < 4; i++) {
+    EXPECT_NEAR(mjc_distance(model.get(), data.get(), &sdf, points[i]), dist[i],
+                MjTol(1e-12, 1e-6));
+  }
+
+  // gradients: normal of the round side, and of the base
+  mjtNum gradient[3];
+  mjc_gradient(model.get(), data.get(), &sdf, gradient, points[0]);
+  EXPECT_NEAR(gradient[0], s, MjTol(1e-12, 1e-6));
+  EXPECT_NEAR(gradient[1], 0, MjTol(1e-12, 1e-6));
+  EXPECT_NEAR(gradient[2], 0.5 * s, MjTol(1e-12, 1e-6));
+  mjc_gradient(model.get(), data.get(), &sdf, gradient, points[3]);
+  EXPECT_NEAR(gradient[2], -1, MjTol(1e-12, 1e-6));
+
+  // gradient matches finite differences of the distance
+  if constexpr (sizeof(mjtNum) == sizeof(double)) {
+    const mjtNum test[3][3] = {{0.3, 0.4, 0.2}, {0.1, -0.2, 0.7}, {0.6, 0, -0.7}};
+    const mjtNum eps = 1e-7;
+    for (int i = 0; i < 3; i++) {
+      mjc_gradient(model.get(), data.get(), &sdf, gradient, test[i]);
+      mjtNum d0 = mjc_distance(model.get(), data.get(), &sdf, test[i]);
+      for (int k = 0; k < 3; k++) {
+        mjtNum p[3] = {test[i][0], test[i][1], test[i][2]};
+        p[k] += eps;
+        mjtNum fd = (mjc_distance(model.get(), data.get(), &sdf, p) - d0) / eps;
+        EXPECT_NEAR(gradient[k], fd, 1e-5) << "point " << i << " axis " << k;
+      }
+    }
+  }
+}
+
 TEST_F(SdfTest, ObtuseMeshTriangleNotPrunedByCircumradius) {
   // Obtuse triangle [(1, 0, 0), (0, -0.1, -0.1), (0, 0.1, -0.1)] has
   // circumradius ~0.5075 < max centroid-to-vertex distance ~0.6700. At x =

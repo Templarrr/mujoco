@@ -49,6 +49,11 @@ class Builtins {
   const Mesh* DomeBottom(Stacks nstack, Slices nslice);
   const Mesh* Tube(Stacks nstack, Slices nslice);
 
+  // Returns an open conical frustum spanning z in [-1, 1] whose bottom (-z) and
+  // top (+z) radii are given relative to the larger one, which is 1. The
+  // radius ratio is quantized so that geoms of similar shape share a mesh.
+  const Mesh* Frustum(Stacks nstack, Slices nslice, float bottom, float top);
+
  private:
   using MeshPtr = std::unique_ptr<Mesh>;
   using MeshMap = std::unordered_map<uint64_t, MeshPtr>;
@@ -71,6 +76,7 @@ class Builtins {
   MeshMap dome_tops_;
   MeshMap dome_bottoms_;
   MeshMap tubes_;
+  MeshMap frustums_;
 };
 
 }  // namespace mujoco

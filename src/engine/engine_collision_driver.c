@@ -47,22 +47,24 @@
 
 
 // table of pairwise collision functions
-#define mjCOLLISION_TABLE(X, _)                                                                                                                                         \
-  /*                  PLANE  HFIELD  SPHERE            CAPSULE             ELLIPSOID         CYLINDER            BOX               MESH              SDF */             \
-  X(mjGEOM_PLANE,     _,     _,      mjc_PlaneSphere,  mjc_PlaneCapsule,   mjc_PlaneConvex,  mjc_PlaneCylinder,  mjc_PlaneBox,     mjc_PlaneConvex,  mjc_PlaneConvex)   \
-  X(mjGEOM_HFIELD,    _,     _,      mjc_ConvexHField, mjc_ConvexHField,   mjc_ConvexHField, mjc_ConvexHField,   mjc_ConvexHField, mjc_ConvexHField, mjc_HFieldSDF)     \
-  X(mjGEOM_SPHERE,    _,     _,      mjc_SphereSphere, mjc_SphereCapsule,  mjc_Convex,       mjc_SphereCylinder, mjc_SphereBox,    mjc_Convex,       mjc_SDF)           \
-  X(mjGEOM_CAPSULE,   _,     _,      _,                mjc_CapsuleCapsule, mjc_Convex,       mjc_Convex,         mjc_CapsuleBox,   mjc_Convex,       mjc_SDF)           \
-  X(mjGEOM_ELLIPSOID, _,     _,      _,                _,                  mjc_Convex,       mjc_Convex,         mjc_Convex,       mjc_Convex,       mjc_SDF)           \
-  X(mjGEOM_CYLINDER,  _,     _,      _,                _,                  _,                mjc_Convex,         mjc_Convex,       mjc_Convex,       mjc_SDF)           \
-  X(mjGEOM_BOX,       _,     _,      _,                _,                  _,                _,                  mjc_BoxBox,       mjc_Convex,       mjc_SDF)           \
-  X(mjGEOM_MESH,      _,     _,      _,                _,                  _,                _,                  _,                mjc_Convex,       mjc_MeshSDF)       \
-  X(mjGEOM_SDF,       _,     _,      _,                _,                  _,                _,                  _,                _,                mjc_SDF)
+#define mjCOLLISION_TABLE(X, _)                                                                                                                                                             \
+  /*                  PLANE  HFIELD  SPHERE            CAPSULE             ELLIPSOID         CYLINDER            BOX               MESH              SDF                CONE */           \
+  X(mjGEOM_PLANE,     _,     _,      mjc_PlaneSphere,  mjc_PlaneCapsule,   mjc_PlaneConvex,  mjc_PlaneCylinder,  mjc_PlaneBox,     mjc_PlaneConvex,  mjc_PlaneConvex,   mjc_PlaneCone)    \
+  X(mjGEOM_HFIELD,    _,     _,      mjc_ConvexHField, mjc_ConvexHField,   mjc_ConvexHField, mjc_ConvexHField,   mjc_ConvexHField, mjc_ConvexHField, mjc_HFieldSDF,     mjc_ConvexHField) \
+  X(mjGEOM_SPHERE,    _,     _,      mjc_SphereSphere, mjc_SphereCapsule,  mjc_Convex,       mjc_SphereCylinder, mjc_SphereBox,    mjc_Convex,       mjc_SDF,           mjc_SphereCone)   \
+  X(mjGEOM_CAPSULE,   _,     _,      _,                mjc_CapsuleCapsule, mjc_Convex,       mjc_Convex,         mjc_CapsuleBox,   mjc_Convex,       mjc_SDF,           mjc_Convex)       \
+  X(mjGEOM_ELLIPSOID, _,     _,      _,                _,                  mjc_Convex,       mjc_Convex,         mjc_Convex,       mjc_Convex,       mjc_SDF,           mjc_Convex)       \
+  X(mjGEOM_CYLINDER,  _,     _,      _,                _,                  _,                mjc_Convex,         mjc_Convex,       mjc_Convex,       mjc_SDF,           mjc_Convex)       \
+  X(mjGEOM_BOX,       _,     _,      _,                _,                  _,                _,                  mjc_BoxBox,       mjc_Convex,       mjc_SDF,           mjc_Convex)       \
+  X(mjGEOM_MESH,      _,     _,      _,                _,                  _,                _,                  _,                mjc_Convex,       mjc_MeshSDF,       mjc_Convex)       \
+  X(mjGEOM_SDF,       _,     _,      _,                _,                  _,                _,                  _,                _,                mjc_SDF,           mjc_SDFCone)      \
+  X(mjGEOM_CONE,      _,     _,      _,                _,                  _,                _,                  _,                _,                _,                 mjc_Convex)
 
-#define MJ_COLLISION_ROW(t1, c0, c1, c2, c3, c4, c5, c6, c7, c8) \
-  MJ_CELL(t1, 0, c0) MJ_CELL(t1, 1, c1) MJ_CELL(t1, 2, c2)       \
-  MJ_CELL(t1, 3, c3) MJ_CELL(t1, 4, c4) MJ_CELL(t1, 5, c5)       \
-  MJ_CELL(t1, 6, c6) MJ_CELL(t1, 7, c7) MJ_CELL(t1, 8, c8)
+#define MJ_COLLISION_ROW(t1, c0, c1, c2, c3, c4, c5, c6, c7, c8, c9) \
+  MJ_CELL(t1, 0, c0) MJ_CELL(t1, 1, c1) MJ_CELL(t1, 2, c2)           \
+  MJ_CELL(t1, 3, c3) MJ_CELL(t1, 4, c4) MJ_CELL(t1, 5, c5)           \
+  MJ_CELL(t1, 6, c6) MJ_CELL(t1, 7, c7) MJ_CELL(t1, 8, c8)           \
+  MJ_CELL(t1, 9, c9)
 #define MJ_NONE(...) 0
 
 #define MJ_ROW(t1, ...) {__VA_ARGS__},
@@ -128,8 +130,10 @@ int mj_maxContact(const mjModel* m, int g1, int g2, int has_margin) {
   }
 
   // geoms with flat faces
-  int hasface1 = (type1 == mjGEOM_BOX || type1 == mjGEOM_MESH || type1 == mjGEOM_CYLINDER);
-  int hasface2 = (type2 == mjGEOM_BOX || type2 == mjGEOM_MESH || type2 == mjGEOM_CYLINDER);
+  int hasface1 = (type1 == mjGEOM_BOX || type1 == mjGEOM_MESH || type1 == mjGEOM_CYLINDER ||
+                  type1 == mjGEOM_CONE);
+  int hasface2 = (type2 == mjGEOM_BOX || type2 == mjGEOM_MESH || type2 == mjGEOM_CYLINDER ||
+                  type2 == mjGEOM_CONE);
 
   // geoms with only edges
   int hasedge1 = (type1 == mjGEOM_CAPSULE);
@@ -2396,11 +2400,13 @@ static inline int pairNeedsCCD(const mjModel* m, const mjcPair* pair, int user_c
       if (!fn ||
           fn == mjc_PlaneSphere || fn == mjc_PlaneCapsule ||
           fn == mjc_PlaneCylinder || fn == mjc_PlaneBox ||
-          fn == mjc_PlaneConvex || fn == mjc_SphereSphere ||
-          fn == mjc_SphereCapsule || fn == mjc_SphereCylinder ||
+          fn == mjc_PlaneCone || fn == mjc_PlaneConvex ||
+          fn == mjc_SphereSphere || fn == mjc_SphereCapsule ||
+          fn == mjc_SphereCylinder || fn == mjc_SphereCone ||
           fn == mjc_SphereBox || fn == mjc_CapsuleCapsule ||
           fn == mjc_CapsuleBox || fn == mjc_BoxBox ||
-          fn == mjc_SDF || fn == mjc_HFieldSDF || fn == mjc_MeshSDF) {
+          fn == mjc_SDF || fn == mjc_SDFCone ||
+          fn == mjc_HFieldSDF || fn == mjc_MeshSDF) {
         return 0;
       }
       return 1;

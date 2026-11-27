@@ -351,6 +351,13 @@ void mjv_initGeom(mjvGeom* geom, int type, const mjtNum* size,
       geom->size[2] = (float)size[1];
       break;
 
+    case mjGEOM_CONE:
+      // radius at -z, radius at +z, half-height
+      geom->size[0] = (float)size[0];
+      geom->size[1] = (float)size[2];
+      geom->size[2] = (float)size[1];
+      break;
+
     case mjGEOM_DISC:
       geom->size[0] = (float)size[0];
       geom->size[1] = (float)size[1];

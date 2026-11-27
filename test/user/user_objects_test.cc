@@ -18,6 +18,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdio>
 #include <cstring>
 #include <memory>
 #include <string>
@@ -980,6 +981,292 @@ TEST_F(MjCGeomTest, ShellInertiaCylinder) {
   EXPECT_NEAR(shell_inertia[2], m->body_inertia[8], kInertiaTol);
 }
 
+// mass, center of mass on the axis (from the apex) and moments of inertia about
+// it (xx, zz) of a solid cone with base radius r, height h and density rho
+static void ConeInertia(mjtNum r, mjtNum h, mjtNum rho, mjtNum* mass,
+                        mjtNum* com, mjtNum inertia[2]) {
+  *mass = rho * mjPI * r * r * h / 3;
+  *com = 3 * h / 4;
+  inertia[0] = *mass * (3 * r * r / 20 + 3 * h * h / 80);
+  inertia[1] = 3 * *mass * r * r / 10;
+}
+
+TEST_F(MjCGeomTest, ConeInertia) {
+  static constexpr char xml[] = R"(
+  <mujoco>
+    <worldbody>
+      <body>
+        <geom type="cone" size="0.1 0.3"/>
+      </body>
+    </worldbody>
+  </mujoco>
+  )";
+  std::array<char, 1000> error;
+  MjModelPtr m = LoadModelFromString(xml, error.data(), error.size());
+  ASSERT_THAT(m.get(), NotNull()) << error.data();
+
+  // base of radius 0.1 at z = -0.3, apex at z = 0.3
+  mjtNum mass, com, inertia[2];
+  ConeInertia(0.1, 0.6, 1000, &mass, &com, inertia);
+  EXPECT_NEAR(m->body_mass[1], mass, kInertiaTol);
+  EXPECT_NEAR(m->body_ipos[3], 0, kInertiaTol);
+  EXPECT_NEAR(m->body_ipos[4], 0, kInertiaTol);
+  EXPECT_NEAR(m->body_ipos[5], 0.3 - com, kInertiaTol);
+  EXPECT_NEAR(m->body_inertia[3], inertia[0], kInertiaTol);
+  EXPECT_NEAR(m->body_inertia[4], inertia[0], kInertiaTol);
+  EXPECT_NEAR(m->body_inertia[5], inertia[1], kInertiaTol);
+}
+
+TEST_F(MjCGeomTest, FrustumInertia) {
+  // frustum with radius 0.15 at z = -0.2 and 0.05 at z = 0.2, and the same
+  // frustum given by fromto, along z and along x
+  static constexpr char xml[] = R"(
+  <mujoco>
+    <worldbody>
+      <body>
+        <geom type="cone" size="0.15 0.2 0.05"/>
+      </body>
+      <body>
+        <geom type="cone" size="0.15 0.05" fromto="0 0 -0.2 0 0 0.2"/>
+      </body>
+      <body>
+        <geom type="cone" size="0.05 0.15" fromto="0.2 0 0 -0.2 0 0"/>
+      </body>
+    </worldbody>
+  </mujoco>
+  )";
+  std::array<char, 1000> error;
+  MjModelPtr m = LoadModelFromString(xml, error.data(), error.size());
+  ASSERT_THAT(m.get(), NotNull()) << error.data();
+
+  // frustum is a cone with apex at z = 0.4 minus a cone with apex at z = 0.4
+  // and base at z = 0.2
+  mjtNum mass1, com1, inertia1[2], mass2, com2, inertia2[2];
+  ConeInertia(0.15, 0.6, 1000, &mass1, &com1, inertia1);
+  ConeInertia(0.05, 0.2, 1000, &mass2, &com2, inertia2);
+  mjtNum mass = mass1 - mass2;
+  mjtNum z1 = 0.4 - com1, z2 = 0.4 - com2;
+  mjtNum com = (mass1 * z1 - mass2 * z2) / mass;
+  mjtNum ixx = inertia1[0] + mass1 * (z1 - com) * (z1 - com) -
+               inertia2[0] - mass2 * (z2 - com) * (z2 - com);
+  mjtNum izz = inertia1[1] - inertia2[1];
+
+  // body 1: frustum along z, the center of mass is towards the large end
+  EXPECT_LT(com, 0);
+  EXPECT_NEAR(m->body_mass[1], mass, kInertiaTol);
+  EXPECT_NEAR(m->body_ipos[5], com, kInertiaTol);
+  EXPECT_NEAR(m->body_inertia[3], ixx, kInertiaTol);
+  EXPECT_NEAR(m->body_inertia[4], ixx, kInertiaTol);
+  EXPECT_NEAR(m->body_inertia[5], izz, kInertiaTol);
+
+  // body 2: the first radius is at the "from" point, the large end at z = -0.2
+  EXPECT_NEAR(m->body_mass[2], mass, kInertiaTol);
+  EXPECT_NEAR(m->body_ipos[8], com, kInertiaTol);
+
+  // body 3: along x, the large end at x = -0.2
+  EXPECT_NEAR(m->body_mass[3], mass, kInertiaTol);
+  EXPECT_NEAR(m->body_ipos[9], com, kInertiaTol);
+  EXPECT_NEAR(m->body_ipos[10], 0, kInertiaTol);
+  EXPECT_NEAR(m->body_ipos[11], 0, kInertiaTol);
+}
+
+TEST_F(MjCGeomTest, ConeInertiaMultipleGeoms) {
+  // body with two geoms: a cone and a sphere, the center of mass of the body
+  // takes the offset of the center of mass of the cone into account
+  static constexpr char xml[] = R"(
+  <mujoco>
+    <worldbody>
+      <body>
+        <geom type="cone" size="0.1 0.3" pos="1 0 0"/>
+        <geom type="sphere" size="0.1" pos="-1 0 0"/>
+      </body>
+    </worldbody>
+  </mujoco>
+  )";
+  std::array<char, 1000> error;
+  MjModelPtr m = LoadModelFromString(xml, error.data(), error.size());
+  ASSERT_THAT(m.get(), NotNull()) << error.data();
+
+  mjtNum mass, com, inertia[2];
+  ConeInertia(0.1, 0.6, 1000, &mass, &com, inertia);
+  mjtNum sphere_mass = 1000 * 4 * mjPI * 0.001 / 3;
+  mjtNum total = mass + sphere_mass;
+  EXPECT_NEAR(m->body_mass[1], total, kInertiaTol);
+  EXPECT_NEAR(m->body_ipos[3], (mass - sphere_mass) / total, kInertiaTol);
+  EXPECT_NEAR(m->body_ipos[5], mass * (0.3 - com) / total, kInertiaTol);
+}
+
+TEST_F(MjCGeomTest, ShellInertiaCone) {
+  if constexpr (sizeof(mjtNum) == sizeof(float)) {
+    GTEST_SKIP() << "ShellInertia tests use radii differences of ~1e-8, which "
+                    "vanish in float32 precision";
+  }
+
+  // frustum with radius rb at z = -h and rt at z = h
+  const mjtNum rb = 0.15, rt = 0.05, h = 0.2;
+
+  // offset surface at distance eps: the round side moves out along its normal
+  const mjtNum eps = 1e-7;
+  const mjtNum b = (rt - rb) / (2 * h);
+  const mjtNum c = eps * mju_sqrt(1 + b * b);
+  char xml[1000];
+  std::snprintf(xml, sizeof(xml), R"(
+  <mujoco>
+    <worldbody>
+      <body>
+        <geom type="cone" size="%.17g %.17g %.17g" shellinertia="true"/>
+      </body>
+      <body>
+        <geom type="cone" size="%.17g %.17g %.17g" density="1e10"/>
+      </body>
+      <body>
+        <geom type="cone" size="%.17g %.17g %.17g" density="1e10"/>
+      </body>
+    </worldbody>
+  </mujoco>
+  )", rb, h, rt, rb, h, rt, rb - b * eps + c, h + eps, rt + b * eps + c);
+  std::array<char, 1000> error;
+  MjModelPtr m = LoadModelFromString(xml, error.data(), error.size());
+  ASSERT_THAT(m.get(), NotNull()) << error.data();
+
+  // surface area
+  mjtNum slant = mju_sqrt((rt - rb) * (rt - rb) + 4 * h * h);
+  mjtNum area = mjPI * (rt * rt + rb * rb) + mjPI * (rt + rb) * slant;
+  EXPECT_NEAR(m->body_mass[1], 1000 * area, kInertiaTol);
+
+  // mass, center of mass and inertia of the shell are those of the difference
+  // of the solids, of density 1e10 and thickness 1e-7 (surface density 1000),
+  // up to the relative error of the thin-shell approximation
+  const mjtNum tol = 1e-5;
+  mjtNum mass = m->body_mass[3] - m->body_mass[2];
+  EXPECT_NEAR(m->body_mass[1], mass, tol * mass);
+  mjtNum com = (m->body_mass[3] * m->body_ipos[11] -
+                m->body_mass[2] * m->body_ipos[8]) / mass;
+  EXPECT_NEAR(m->body_ipos[5], com, tol * h);
+  mjtNum d2 = m->body_ipos[8] - m->body_ipos[5];
+  mjtNum d3 = m->body_ipos[11] - m->body_ipos[5];
+  mjtNum ixx = m->body_inertia[9] + m->body_mass[3] * d3 * d3 -
+               m->body_inertia[6] - m->body_mass[2] * d2 * d2;
+  mjtNum izz = m->body_inertia[11] - m->body_inertia[8];
+  EXPECT_NEAR(m->body_inertia[3], ixx, tol * ixx);
+  EXPECT_NEAR(m->body_inertia[5], izz, tol * izz);
+}
+
+TEST_F(MjCGeomTest, ConeSize) {
+  static constexpr char xml[] = R"(
+  <mujoco>
+    <worldbody>
+      <geom name="cone" type="cone" size="0.1 0.2"/>
+      <geom name="frustum" type="cone" size="0.1 0.2 0.05"/>
+      <geom name="fromto1" type="cone" size="0.1" fromto="0 0 0 0 0 1"/>
+      <geom name="fromto2" type="cone" size="0.1 0.05" fromto="0 0 0 0 0 1"/>
+      <geom name="fromto_apex" type="cone" size="0 0.1" fromto="0 0 0 0 0 1"/>
+      <geom name="fromto3" type="cone" size="0.1 0.05 0.3" fromto="0 0 0 0 0 1"/>
+      <geom name="apex_down" type="cone" size="0 0.2 0.1"/>
+    </worldbody>
+  </mujoco>
+  )";
+  std::array<char, 1000> error;
+  MjModelPtr m = LoadModelFromString(xml, error.data(), error.size());
+  ASSERT_THAT(m.get(), NotNull()) << error.data();
+
+  // size: radius at -z, half-height, radius at +z (0 if not given)
+  auto size = [&](int g) { return AsVector(m->geom_size + 3 * g, 3); };
+  auto near = [](std::vector<mjtNum> v) {
+    return Pointwise(MjNear(1e-12, 1e-6), v);
+  };
+  EXPECT_THAT(size(0), near({0.1, 0.2, 0}));
+  EXPECT_THAT(size(1), near({0.1, 0.2, 0.05}));
+  EXPECT_THAT(size(6), near({0, 0.2, 0.1}));
+
+  // fromto: the +z end is at the "from" point, so the radius at "from" is the
+  // radius at +z, and the radius at "to" (0 if not given) is the radius at -z
+  EXPECT_THAT(size(2), near({0, 0.5, 0.1}));
+  EXPECT_THAT(size(3), near({0.05, 0.5, 0.1}));
+  EXPECT_THAT(size(4), near({0.1, 0.5, 0}));
+  EXPECT_THAT(size(5), near({0.05, 0.5, 0.1}));
+  mjtNum zaxis[3] = {0, 0, 1}, axis[3];
+  mju_rotVecQuat(axis, zaxis, m->geom_quat + 8);
+  EXPECT_NEAR(axis[2], -1, MjTol(1e-12, 1e-6));
+
+  // bounding box and sphere take the larger radius
+  EXPECT_THAT(AsVector(m->geom_aabb + 6 + 3, 3), near({0.1, 0.1, 0.2}));
+  EXPECT_THAT(AsVector(m->geom_aabb + 36 + 3, 3), near({0.1, 0.1, 0.2}));
+  EXPECT_NEAR(m->geom_rbound[6], mju_sqrt(0.1 * 0.1 + 0.2 * 0.2),
+              MjTol(1e-12, 1e-6));
+}
+
+TEST_F(MjCGeomTest, ConeSizeErrors) {
+  const char* sizes[] = {"0 0.2", "-0.1 0.2", "0.1 0.2 -0.1", "0.1 0"};
+  const char* errors[] = {"size 0 or size 2 must be positive in cone",
+                          "size 0 must be non-negative in cone",
+                          "size 2 must be non-negative in cone",
+                          "size 1 must be positive in cone"};
+  for (int i = 0; i < 4; ++i) {
+    char xml[200];
+    std::snprintf(xml, sizeof(xml), R"(
+    <mujoco>
+      <worldbody>
+        <geom type="cone" size="%s"/>
+      </worldbody>
+    </mujoco>
+    )", sizes[i]);
+    std::array<char, 1000> error;
+    MjModelPtr m = LoadModelFromString(xml, error.data(), error.size());
+    EXPECT_THAT(m.get(), IsNull()) << sizes[i];
+    EXPECT_THAT(error.data(), HasSubstr(errors[i]));
+  }
+
+  // tendons cannot wrap around cones
+  static constexpr char xml[] = R"(
+  <mujoco>
+    <worldbody>
+      <site name="s1" pos="-1 0 0"/>
+      <site name="s2" pos="1 0 0"/>
+      <body>
+        <freejoint/>
+        <geom name="cone" type="cone" size="0.1 0.2"/>
+      </body>
+    </worldbody>
+    <tendon>
+      <spatial>
+        <site site="s1"/>
+        <geom geom="cone"/>
+        <site site="s2"/>
+      </spatial>
+    </tendon>
+  </mujoco>
+  )";
+  std::array<char, 1000> error;
+  MjModelPtr m = LoadModelFromString(xml, error.data(), error.size());
+  EXPECT_THAT(m.get(), IsNull());
+  EXPECT_THAT(error.data(), HasSubstr("is not sphere or cylinder"));
+}
+
+TEST_F(MjCGeomTest, ConeSite) {
+  // a radius which is not given is 0, not the default size of sites
+  static constexpr char xml[] = R"(
+  <mujoco>
+    <worldbody>
+      <site type="cone" size="0.1 0.2"/>
+      <site type="cone" size="0.1 0.2 0.05"/>
+      <site type="cone" size="0.1" fromto="0 0 0 0 0 1"/>
+      <site type="cylinder" size="0.1 0.2"/>
+    </worldbody>
+  </mujoco>
+  )";
+  std::array<char, 1000> error;
+  MjModelPtr m = LoadModelFromString(xml, error.data(), error.size());
+  ASSERT_THAT(m.get(), NotNull()) << error.data();
+  auto near = [](std::vector<mjtNum> v) {
+    return Pointwise(MjNear(1e-12, 1e-6), v);
+  };
+  EXPECT_THAT(AsVector(m->site_size, 3), near({0.1, 0.2, 0}));
+  EXPECT_THAT(AsVector(m->site_size + 3, 3), near({0.1, 0.2, 0.05}));
+  EXPECT_THAT(AsVector(m->site_size + 6, 3), near({0, 0.5, 0.1}));
+  EXPECT_THAT(AsVector(m->site_size + 9, 3), near({0.1, 0.2, 0.005}));
+}
+
 TEST_F(MjCGeomTest, ShellInertiaEllipsoid) {
   if constexpr (sizeof(mjtNum) == sizeof(float)) {
     GTEST_SKIP() << "ShellInertia tests use radii differences of ~1e-8, which "
@@ -1282,7 +1569,7 @@ TEST_F(MjCSiteTest, MeshSiteFromtoDisallowed) {
   MjModelPtr model = LoadModelFromString(xml, error.data(), error.size());
   ASSERT_THAT(model.get(), IsNull());
   EXPECT_THAT(error.data(),
-              HasSubstr("fromto requires capsule, cylinder, box or ellipsoid"));
+              HasSubstr("fromto requires capsule, cylinder, cone, box or ellipsoid"));
 }
 
 TEST_F(MjCSiteTest, NonMeshSiteWithMeshDisallowed) {

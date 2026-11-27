@@ -858,6 +858,18 @@ void mjXReader::OneSite(XMLElement* elem, mjsSite* site) {
   // mechanical attributes
   ReadAttrTable(elem, site, site->element, kSiteAttrs, kSiteAttrsN);
 
+  // cone: a radius which is not given is 0, not the default size of sites; with fromto, the
+  // radii at the from and to points are the first two values
+  if (site->type == mjGEOM_CONE) {
+    auto size = ReadAttrVec<double>(elem, "size");
+    int n = size ? size->size() : 3;
+    if (mjuu_defined(site->fromto[0])) {
+      if (n < 2) { site->size[1] = 0; }
+    } else if (n < 3) {
+      site->size[2] = 0;
+    }
+  }
+
   // orientation alternatives
   ReadQuat(elem, "quat", site->quat, text);
   ReadAlternative(elem, site->alt);

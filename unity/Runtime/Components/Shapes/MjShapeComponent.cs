@@ -71,9 +71,35 @@ public abstract class MjShapeComponent : MjComponent {
   }
 
   public void ShapeFromMjcf(XmlElement mjcf) {
+    if (mjcf.GetStringAttribute("type", "") == "cone") {
+      ConeFromMjcf(mjcf);
+      return;
+    }
     ShapeType = mjcf.GetEnumAttribute<ShapeTypes>(
         "type", ShapeTypes.Sphere, ignoreCase: true);
     Shape.FromMjcf(mjcf);
+  }
+
+  // Unity has no cone shape, and a mesh shape needs a mesh asset: a cone or conical frustum is
+  // replaced by the cylinder with its mean radius, which changes its shape, mass and contacts.
+  private void ConeFromMjcf(XmlElement mjcf) {
+    ShapeType = ShapeTypes.Cylinder;
+    Vector3 fromPoint, toPoint;
+    var fromto = MjEngineTool.ParseFromToMjcf(mjcf, out fromPoint, out toPoint);
+
+    // size: radius at -z, half-height, radius at +z; with fromto: radius at from, radius at to
+    var size = mjcf.GetFloatArrayAttribute("size", defaultValue: new float[] { 0.5f, 1.0f, 0.0f });
+    if (fromto) {
+      Cylinder.Radius = 0.5f * (size[0] + size[1]);
+      Cylinder.HalfHeight = (toPoint - fromPoint).magnitude * 0.5f;
+    } else {
+      Cylinder.Radius = 0.5f * (size[0] + size[2]);
+      Cylinder.HalfHeight = size[1];
+    }
+    Debug.LogError(
+        $"{mjcf.GetStringAttribute("name", mjcf.Name)}: cone geoms are not supported in Unity. " +
+        $"The cone is replaced by a cylinder with its mean radius {Cylinder.Radius}, which " +
+        "changes its shape, mass and contacts.");
   }
 
   public Tuple<Vector3[], int[]> BuildMesh() {

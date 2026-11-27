@@ -326,6 +326,32 @@ static void mjc_cylinderSupport(mjtNum res[3], mjCCDObj* obj, const mjtNum dir[3
 }
 
 
+// cone support function: radius size[0] at -z, size[2] at +z
+static void mjc_coneSupport(mjtNum res[3], mjCCDObj* obj, const mjtNum dir[3]) {
+  // cone data
+  const mjtNum* mat = obj->mat;
+  const mjtNum* pos = obj->pos;
+  const mjtNum* size = obj->size;
+
+  // rotate dir to geom local frame
+  mjtNum local_dir[3], local_supp[3];
+  mulMatTVec3(local_dir, mat, dir);
+
+  // support point on the rim of the top or bottom disk
+  mjtNum n2 = local_dir[0]*local_dir[0] + local_dir[1]*local_dir[1];
+  mjtNum n = n2 >= mjMINVAL2 ? mju_sqrt(n2) : 0;
+  int top = size[2]*n + size[1]*local_dir[2] >= size[0]*n - size[1]*local_dir[2];
+  mjtNum scl = n > 0 ? (top ? size[2] : size[0]) / n : 0;
+  local_supp[0] = scl * local_dir[0];
+  local_supp[1] = scl * local_dir[1];
+  local_supp[2] = top ? size[1] : -size[1];
+  obj->vertindex = top ? 0 : 1;
+
+  // transform result to global frame
+  localToGlobal(res, mat, local_supp, pos);
+}
+
+
 // box support function
 static void mjc_boxSupport(mjtNum res[3], mjCCDObj* obj, const mjtNum dir[3]) {
   // box data
@@ -645,6 +671,21 @@ void mjccd_support(const void *_obj, const ccd_vec3_t *_dir, ccd_vec3_t *vec) {
     res[2] = mju_sign(local_dir[2]) * size[1];
     break;
 
+  case mjGEOM_CONE: {
+    // support on the rim of the top or bottom disk
+    tmp = mju_sqrt(local_dir[0]*local_dir[0] + local_dir[1]*local_dir[1]);
+    int top = size[2]*tmp + size[1]*local_dir[2] >= size[0]*tmp - size[1]*local_dir[2];
+    mjtNum radius = top ? size[2] : size[0];
+    if (tmp > mjMINVAL) {
+      res[0] = local_dir[0]/tmp*radius;
+      res[1] = local_dir[1]/tmp*radius;
+    } else {
+      res[0] = res[1] = 0;
+    }
+    res[2] = top ? size[1] : -size[1];
+    break;
+  }
+
   case mjGEOM_BOX:
     for (int i=0; i < 3; i++) {
       res[i] = mju_sign(local_dir[i]) * size[i];
@@ -803,6 +844,9 @@ static void mjc_initCCDObjSupport(mjCCDObj* obj, const mjModel* m, int dataid) {
     break;
   case mjGEOM_CYLINDER:
     obj->support = mjc_cylinderSupport;
+    break;
+  case mjGEOM_CONE:
+    obj->support = mjc_coneSupport;
     break;
   case mjGEOM_BOX:
     obj->support = mjc_boxSupport;
@@ -963,8 +1007,10 @@ static int maxContacts(const mjModel* m, const mjCCDObj* obj1, const mjCCDObj* o
   }
 
   // geoms with flat faces
-  int hasface1 = (type1 == mjGEOM_BOX || type1 == mjGEOM_MESH || type1 == mjGEOM_CYLINDER);
-  int hasface2 = (type2 == mjGEOM_BOX || type2 == mjGEOM_MESH || type2 == mjGEOM_CYLINDER);
+  int hasface1 = (type1 == mjGEOM_BOX || type1 == mjGEOM_MESH || type1 == mjGEOM_CYLINDER ||
+                  type1 == mjGEOM_CONE);
+  int hasface2 = (type2 == mjGEOM_BOX || type2 == mjGEOM_MESH || type2 == mjGEOM_CYLINDER ||
+                  type2 == mjGEOM_CONE);
 
   // geoms with only edges
   int hasedge1 = (type1 == mjGEOM_CAPSULE);
@@ -1412,7 +1458,8 @@ void mjc_fixNormal(const mjModel* m, const mjData* d, mjPreContact* con, int g1,
 
     // set to mjGEOM_NONE if type cannot be processed
     if (type[i] != mjGEOM_SPHERE && type[i] != mjGEOM_CAPSULE &&
-        type[i] != mjGEOM_ELLIPSOID && type[i] != mjGEOM_CYLINDER) {
+        type[i] != mjGEOM_ELLIPSOID && type[i] != mjGEOM_CYLINDER &&
+        type[i] != mjGEOM_CONE) {
       type[i] = mjGEOM_NONE;
     }
   }
@@ -1512,8 +1559,36 @@ void mjc_fixNormal(const mjModel* m, const mjData* d, mjPreContact* con, int g1,
         processed[i] = 1;
         break;
 
+      case mjGEOM_CONE: {
+        // skip if within 5% length of flat wall
+        if (mju_abs(pos1[2]) > 0.95*size[1]) {
+          break;
+        }
+
+        // radius at the height of the contact, slope of the round wall
+        mjtNum slope = (size[2] - size[0]) / (2*size[1]);
+        mjtNum radius = 0.5*(size[0] + size[2]) + slope*pos1[2];
+        mjtNum rxy = mju_norm(pos1, 2);
+
+        // compute distances to flat and round wall
+        dst1 = mju_abs(size[1]-mju_abs(pos1[2]));
+        dst2 = mju_abs(radius-rxy);
+
+        // require 4x closer to round than flat wall, skip near the apex
+        if (dst1 < 0.25*dst2 || rxy < mjMINVAL) {
+          break;
+        }
+
+        // set normal for round wall, tilted along the axis
+        nrm[0] = pos1[0];
+        nrm[1] = pos1[1];
+        nrm[2] = -slope*rxy;
+        processed[i] = 1;
+        break;
+      }
+
       default:
-        // do nothing: only sphere, capsule, ellipsoid and cylinder are processed
+        // do nothing: only sphere, capsule, ellipsoid, cylinder and cone are processed
         break;
       }
 

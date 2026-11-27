@@ -2117,9 +2117,29 @@ static int meshEdgeNormals(mjtNum* res, mjtNum* endverts, int dim, mjCCDObj* obj
 }
 
 
+// true if the geom is a cylinder or a cone, whose faces are handled together
+static inline int isCylindrical(int type) {
+  return type == mjGEOM_CYLINDER || type == mjGEOM_CONE;
+}
+
+
+// radius of a cylinder or cone at its top (+z) or bottom (-z) end
+static inline mjtNum cylindricalRadius(const mjCCDObj* obj, int bottom) {
+  if (obj->geom_type == mjGEOM_CONE) {
+    return bottom ? obj->size[0] : obj->size[2];
+  }
+  return obj->size[0];
+}
+
+
 // try recovering the cylinder normal from vertex index
 static int cylinderNormals(mjtNum res[9], int resind[3], int dim, mjCCDObj* obj,
                            const int vi[3], const mjtNum dir[3]) {
+  // apex of a cone: no face
+  if (cylindricalRadius(obj, vi[0]) <= 0) {
+    return 0;
+  }
+
   if (dim == 1) {
     globalcoord(res, obj->mat, NULL, 0, 0, vi[0] ? -1.0 : 1.0);
     resind[0] = vi[0];
@@ -2256,12 +2276,27 @@ static int boxEdgeNormals(mjtNum res[9], mjtNum endverts[9], int dim, mjCCDObj* 
 }
 
 
-// recover edge normal of a cylinder
-static inline int cylinderEdgeNormals(mjtNum res[3], int dim, mjCCDObj* obj) {
+// recover edge normal of a cylinder or cone
+static inline int cylinderEdgeNormals(mjtNum res[3], int dim, mjCCDObj* obj, const mjtNum x[3]) {
   if (dim == 1 || dim == 2) {
     res[0] = obj->mat[2];
     res[1] = obj->mat[5];
     res[2] = obj->mat[8];
+
+    // cone: edge through the witness point, from the bottom rim to the top rim
+    if (obj->geom_type == mjGEOM_CONE) {
+      mjtNum u[3];
+      sub3(u, x, obj->pos);
+      addScl3(u, u, res, -dot3(u, res));
+      mjtNum n = norm3(u);
+      if (n < mjMINVAL) {
+        return 0;
+      }
+      scl3(u, u, (obj->size[2] - obj->size[0]) / n);
+      scl3(res, res, 2*obj->size[1]);
+      add3(res, res, u);
+      mju_normalize3(res);
+    }
     return 1;
   }
   return 0;
@@ -2284,8 +2319,17 @@ static inline int cylinderEdge(mjtNum res[6], mjCCDObj* obj, const mjtNum normal
   // scale the projected vector to cylinder radius pointing towards the face
   mjtNum scl = -radius / n;
 
-  // compute endpoints of cylinder edge parallel to the cylinder axis
+  // cone: compute endpoints of the edge on the bottom and top rims
   mjtNum center[3];
+  if (obj->geom_type == mjGEOM_CONE) {
+    addScl3(center, obj->pos, proj, -obj->size[0] / n);
+    addScl3(res + 0, center, axis, -halflen);
+    addScl3(center, obj->pos, proj, -obj->size[2] / n);
+    addScl3(res + 3, center, axis, halflen);
+    return 2;
+  }
+
+  // compute endpoints of cylinder edge parallel to the cylinder axis
   addScl3(center, obj->pos, proj, scl);
   addScl3(res + 0, center, axis, -halflen);
   addScl3(res + 3, center, axis, halflen);
@@ -2324,11 +2368,12 @@ static int cylinderFace(mjtNum res[48], mjCCDObj* obj, int idx) {
    -1.000000000000000, -0.923879532511287, -0.707106781186548, -0.382683432365090
   };
 
-  // compute 16-gon cylinder face (size[0]: radius, size[1]: half-length)
+  // compute 16-gon cylinder face (size[1]: half-length), with the radius of the cap
   mjtNum sgn = idx ? -1.0 : 1.0;
+  mjtNum radius = cylindricalRadius(obj, idx);
   for (int i = 0; i < 16; i++) {
-    mjtNum x = cos_16[i] * obj->size[0];
-    mjtNum y = -sin_16[i] * obj->size[0] * sgn;  // use sgn for correct orientation
+    mjtNum x = cos_16[i] * radius;
+    mjtNum y = -sin_16[i] * radius * sgn;  // use sgn for correct orientation
     globalcoord(res + 3*i, obj->mat, obj->pos, x, y, sgn * obj->size[1]);
   }
   return 16;
@@ -2510,8 +2555,8 @@ static inline int geomEdgeNormals(mjtNum* res, mjtNum* endverts, int dim, mjCCDO
     return boxEdgeNormals(res, endverts, dim, obj, triface, trifacei);
   } else if (obj->geom_type == mjGEOM_MESH) {
     return meshEdgeNormals(res, endverts, dim, obj, triface, trifacei);
-  } else if (obj->geom_type == mjGEOM_CYLINDER) {
-    return cylinderEdgeNormals(res, dim, obj);
+  } else if (isCylindrical(obj->geom_type)) {
+    return cylinderEdgeNormals(res, dim, obj, x);
   } else if (obj->geom_type == mjGEOM_CAPSULE) {
     return capsuleEdgeNormals(res, endverts, obj, triface, x);
   }
@@ -2537,7 +2582,7 @@ int mjc_multicontact(mjCCDObj* obj1, mjCCDObj* obj2, mjtNum* x1, mjtNum* x2, mjt
     nmeshdegmax = nmeshdegmax < 1 ? 1 : nmeshdegmax;
     npolygonmax = npolygonmax < 1 ? 1 : npolygonmax;
   }
-  if (obj1->geom_type == mjGEOM_CYLINDER || obj2->geom_type == mjGEOM_CYLINDER) {
+  if (isCylindrical(obj1->geom_type) || isCylindrical(obj2->geom_type)) {
     nmeshdegmax = nmeshdegmax < 2 ? 2 : nmeshdegmax;
     npolygonmax = npolygonmax < 16 ? 16 : npolygonmax;
   }
@@ -2608,7 +2653,7 @@ int mjc_multicontact(mjCCDObj* obj1, mjCCDObj* obj2, mjtNum* x1, mjtNum* x2, mjt
     nnorms1 = boxNormals(n1, idx1, nface1, obj1, triface1i, dir_neg);
   } else if (obj1->geom_type == mjGEOM_MESH) {
     nnorms1 = meshNormals(n1, idx1, nface1, obj1, triface1i);
-  } else if (obj1->geom_type == mjGEOM_CYLINDER) {
+  } else if (isCylindrical(obj1->geom_type)) {
     nnorms1 = cylinderNormals(n1, idx1, nface1, obj1, triface1i, dir_neg);
   } else if (obj1->geom_type == mjGEOM_PLANE) {
     nnorms1 = planeNormals(n1, idx1, obj1);
@@ -2617,7 +2662,7 @@ int mjc_multicontact(mjCCDObj* obj1, mjCCDObj* obj2, mjtNum* x1, mjtNum* x2, mjt
     nnorms2 = boxNormals(n2, idx2, nface2, obj2, triface2i, dir);
   } else if (obj2->geom_type == mjGEOM_MESH) {
     nnorms2 = meshNormals(n2, idx2, nface2, obj2, triface2i);
-  } else if (obj2->geom_type == mjGEOM_CYLINDER) {
+  } else if (isCylindrical(obj2->geom_type)) {
     nnorms2 = cylinderNormals(n2, idx2, nface2, obj2, triface2i, dir);
   } else if (obj2->geom_type == mjGEOM_PLANE) {
     nnorms2 = planeNormals(n2, idx2, obj2);
@@ -2657,7 +2702,7 @@ int mjc_multicontact(mjCCDObj* obj1, mjCCDObj* obj2, mjtNum* x1, mjtNum* x2, mjt
 
   // recover geom1 matching edge or face
   if (edgecon1) {
-    if (obj1->geom_type == mjGEOM_CYLINDER) {
+    if (isCylindrical(obj1->geom_type)) {
       nface1 = cylinderEdge(face1, obj1, n2 + 3*j);
       if (!nface1) {
         return 1;
@@ -2674,7 +2719,7 @@ int mjc_multicontact(mjCCDObj* obj1, mjCCDObj* obj2, mjtNum* x1, mjtNum* x2, mjt
     } else if (obj1->geom_type == mjGEOM_MESH) {
       int ind = (edgecon2 ? idx1[j] : idx1[i]);
       nface1 = meshFace(face1, obj1, ind);
-    } else if (obj1->geom_type == mjGEOM_CYLINDER) {
+    } else if (isCylindrical(obj1->geom_type)) {
       int ind = (edgecon2 ? idx1[j] : idx1[i]);
       nface1 = cylinderFace(face1, obj1, ind);
     } else if (obj1->geom_type == mjGEOM_PLANE) {
@@ -2684,7 +2729,7 @@ int mjc_multicontact(mjCCDObj* obj1, mjCCDObj* obj2, mjtNum* x1, mjtNum* x2, mjt
 
   // recover geom2 matching edge or face
   if (edgecon2) {
-    if (obj2->geom_type == mjGEOM_CYLINDER) {
+    if (isCylindrical(obj2->geom_type)) {
       nface2 = cylinderEdge(face2, obj2, n1 + 3*j);
       if (!nface2) {
         return 1;
@@ -2699,7 +2744,7 @@ int mjc_multicontact(mjCCDObj* obj1, mjCCDObj* obj2, mjtNum* x1, mjtNum* x2, mjt
       nface2 = boxFace(face2, obj2, idx2[j]);
     } else if (obj2->geom_type == mjGEOM_MESH) {
       nface2 = meshFace(face2, obj2, idx2[j]);
-    } else if (obj2->geom_type == mjGEOM_CYLINDER) {
+    } else if (isCylindrical(obj2->geom_type)) {
       nface2 = cylinderFace(face2, obj2, idx2[j]);
     } else if (obj2->geom_type == mjGEOM_PLANE) {
       nface2 = planeFace(face2, obj2);

@@ -2672,6 +2672,7 @@ typedef enum mjtGeom {            // type of geometric shape
   mjGEOM_BOX,                     // box
   mjGEOM_MESH,                    // mesh
   mjGEOM_SDF,                     // signed distance field
+  mjGEOM_CONE,                    // cone or conical frustum
 
   mjNGEOMTYPES,                   // number of regular geom types
 

@@ -58,6 +58,7 @@
 #include <pxr/usd/usd/primFlags.h>
 #include <pxr/usd/usd/stage.h>
 #include <pxr/usd/usdGeom/capsule.h>
+#include <pxr/usd/usdGeom/cone.h>
 #include <pxr/usd/usdGeom/cube.h>
 #include <pxr/usd/usdGeom/cylinder.h>
 #include <pxr/usd/usdGeom/gprim.h>
@@ -267,6 +268,11 @@ bool MaybeParseGeomPrimitive(const pxr::UsdPrim& prim, T* element,
   } else if (prim.IsA<pxr::UsdGeomCapsule>()) {
     return ParseAxialPrimitive(pxr::UsdGeomCapsule(prim), "capsule",
                                mjGEOM_CAPSULE, scale, element);
+  } else if (prim.IsA<pxr::UsdGeomCone>()) {
+    // the apex of a USD cone points along its axis: a MuJoCo cone with its apex
+    // at +z, whose size[2] (the radius at +z) is 0
+    return ParseAxialPrimitive(pxr::UsdGeomCone(prim), "cone", mjGEOM_CONE,
+                               scale, element);
   } else if (prim.IsA<pxr::UsdGeomCube>()) {
     element->type = mjGEOM_BOX;
     auto cube = pxr::UsdGeomCube(prim);
